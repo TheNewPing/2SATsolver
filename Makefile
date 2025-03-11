@@ -9,7 +9,7 @@ GENERATOR_TARGET := $(BIN_DIR)/2cnf_generator
 SRC_FILES := $(wildcard $(SRC_DIR)/*.cu)
 OBJ_FILES := $(patsubst $(SRC_DIR)/%.cu, $(OBJ_DIR)/%.o, $(SRC_FILES))
 
-CFLAGS := -O3 -Iinclude
+CFLAGS := -G -O3 -Iinclude
 
 all: $(TARGET)
 

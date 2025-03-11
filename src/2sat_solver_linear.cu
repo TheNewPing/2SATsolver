@@ -5,49 +5,42 @@
 #include <unordered_set>
 #include <fstream>
 
-using namespace std;
+#include "../include/literal.cu"
 
-struct TwoSatSolver {
+struct TwoSatSolverLinear {
     int n_vars;
     int n_vertices;
-    vector<vector<int>> adj, adj_t;
-    vector<bool> used;
-    vector<int> order, comp;
-    vector<bool> assignment;
-    unordered_set<vector<bool>> solutions;
+    std::vector<std::vector<int>> adj, adj_t;
+    std::vector<bool> used;
+    std::vector<int> order, comp;
+    std::vector<bool> assignment;
+    std::unordered_set<std::vector<bool>> solutions;
 
-    TwoSatSolver(int _n_vars) : n_vars(_n_vars), n_vertices(2 * n_vars), adj(n_vertices), adj_t(n_vertices), used(n_vertices), order(), comp(n_vertices, -1), assignment(n_vars) {
+    TwoSatSolverLinear(int _n_vars) : n_vars(_n_vars), n_vertices(2 * n_vars), adj(n_vertices), adj_t(n_vertices), used(n_vertices), order(), comp(n_vertices, -1), assignment(n_vars) {
         order.reserve(n_vertices);
     }
 
-    TwoSatSolver(const string& filepath) {
-        ifstream file(filepath);
-        if (!file.is_open()) {
-            throw runtime_error("Could not open file");
+    TwoSatSolverLinear(const std::string& filepath) {
+        std::ifstream file(filepath);
+        std::vector<Literal> vars;
+        std::string var1, var2;
+        while (file >> var1 >> var2) {
+            vars.push_back(Literal(var1));
+            vars.push_back(Literal(var2));
         }
 
-        vector<int> vars;
-        int a, b;
-        while (file >> a >> b) {
-            vars.push_back(a);
-            vars.push_back(b);
-        }
-        file.close();
-        int max = *max_element(vars.begin(), vars.end());
-        int min = *min_element(vars.begin(), vars.end());
-        int max_var = max > -min ? max : -min;
-        n_vars = max_var;
+        Literal max_var = *max_element(vars.begin(), vars.end());
+        n_vars = max_var.value + 1;
         n_vertices = 2 * n_vars;
         adj.resize(n_vertices);
         adj_t.resize(n_vertices);
         used.resize(n_vertices);
         comp.resize(n_vertices, -1);
-        assignment.resize(n_vars);
+        assignment.resize(max_var.value);
         order.reserve(n_vertices);
         for (size_t i = 0; i < vars.size(); i += 2) {
-            add_disjunction(vars[i], false, vars[i + 1], false);
+            add_disjunction(vars[i], vars[i + 1]);
         }
-
     }
 
     void dfs1(int v) {
@@ -117,8 +110,11 @@ struct TwoSatSolver {
         }
     }
 
-    void add_disjunction(int a, bool na, int b, bool nb) {
-        // na and nb signify whether a and b are to be negated 
+    void add_disjunction(Literal var1, Literal var2) {
+        unsigned int a = var1.value;
+        unsigned int b = var2.value;
+        bool na = !var1.isPositive;
+        bool nb = !var2.isPositive;
         // Note: remember, the k-th variable is represented by 2 * k and 2 * k + 1 (its negation) 
         // an even number has always the LSB set to 0, so the XOR with 1 is equivalent to adding 1
         a = 2 * a ^ na;
@@ -134,17 +130,17 @@ struct TwoSatSolver {
     }
 
     static void example_usage() {
-        TwoSatSolver solver(3); // a, b, c
-        solver.add_disjunction(0, false, 1, true);  //     a  v  not b
-        solver.add_disjunction(0, true, 1, true);   // not a  v  not b
-        solver.add_disjunction(1, false, 2, false); //     b  v      c
-        //solver.add_disjunction(0, false, 0, false); //     a  v      a
-        solver.solve_from_all_nodes();
+        TwoSatSolverLinear solver(3); // a, b, c
+        solver.add_disjunction(Literal(0, true), Literal(1, false));  //     a  v  not b
+        solver.add_disjunction(Literal(0, false), Literal(1, false));   // not a  v  not b
+        solver.add_disjunction(Literal(1, true), Literal(2, true)); //     b  v      c
+        //solver.add_disjunction(Literal(0, true), Literal(0, true)); //     a  v      a
+        solver.solve_from_all_nodes(3, 2);
         for (const auto& sol : solver.solutions) {
             for (bool val : sol) {
-                cout << val << " ";
+                std::cout << val << " ";
             }
-            cout << endl;
+            std::cout << std::endl;
         }
     }
 };
