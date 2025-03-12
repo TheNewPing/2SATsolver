@@ -91,7 +91,7 @@ struct TwoSatSolverLinear {
     void solve_from_all_nodes(int k = 1, int min_dist = 0) {
         solutions.clear();
         for (int i = 0; i < n_vertices && solutions.size() < k; ++i) {
-            solve_2SAT(i);
+            assert(solve_2SAT(i));
             bool valid = true;
             for (const auto& sol : solutions) {
                 int hamming_dist = 0;
