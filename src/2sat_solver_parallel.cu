@@ -7,6 +7,29 @@
 #include "../include/literal.cu"
 #include "../include/cuda_error.cu"
 
+__device__ __host__ void print_array(int* array, int length, int values_per_row) {
+    for (int i = 0; i < length; ++i) {
+        printf("%d ", array[i]);
+        if ((i + 1) % values_per_row == 0) {
+            printf("\n");
+        }
+    }
+    if (length % values_per_row != 0) {
+        printf("\n");
+    }
+}
+__device__ __host__ void print_array(bool* array, int length, int values_per_row) {
+    for (int i = 0; i < length; ++i) {
+        printf("%d ", array[i]);
+        if ((i + 1) % values_per_row == 0) {
+            printf("\n");
+        }
+    }
+    if (length % values_per_row != 0) {
+        printf("\n");
+    }
+}
+
 void add_disjunction(Literal var1, Literal var2, bool* adj, bool* adj_t, int n_vertices) {
     unsigned int a = var1.value;
     unsigned int b = var2.value;
@@ -30,6 +53,9 @@ int fill_adjacency_matrix(std::string filepath, bool** adj, bool** adj_t) {
     std::ifstream file(filepath);
     std::vector<Literal> vars;
     std::string var1, var2;
+    if (!file.is_open()) {
+        throw std::runtime_error("Could not open file: " + filepath);
+    }
     while (file >> var1 >> var2) {
         vars.push_back(Literal(var1));
         vars.push_back(Literal(var2));
@@ -53,10 +79,36 @@ __device__ int dfs1(int v, int n_vertices, bool* used, int* order, int order_sta
     int new_order_start = order_start;
     for (int u = 0; u < n_vertices; ++u) {
         if (adj[v * n_vertices + u] && !used[u])
-        new_order_start = dfs1(u, n_vertices, used, order, new_order_start, adj);
+            new_order_start = dfs1(u, n_vertices, used, order, new_order_start, adj);
     }
     order[new_order_start] = v;
     return new_order_start + 1;
+}
+
+__device__ int dfs1_iterative(int v, int n_vertices, bool* used, int* order, int order_start, bool* adj) {
+    int* stack = (int*)malloc(n_vertices * sizeof(int));
+    int stack_size = 0;
+    stack[stack_size] = v;
+
+    while (stack_size >= 0) {
+        int current = stack[stack_size];
+        bool completed = true;
+        if (!used[current]) {
+            used[current] = true;
+            for (int u = 0; u < n_vertices; ++u) {
+                if (adj[current * n_vertices + u] && !used[u]) {
+                    completed = false;
+                    stack[++stack_size] = u;
+                }
+            }
+        }
+        if (completed) {
+            order[order_start++] = current;
+            stack_size--;
+        }
+    }
+    free(stack);
+    return order_start;
 }
 
 __device__ void dfs2(int v, int cl, int n_vertices, int* comp, bool* adj_t) {
@@ -74,11 +126,17 @@ __device__ bool solve_2SAT(int n_vars, int n_vertices, bool* used, int* order, i
         comp[i] = -1;
     }
     // prepare the dfs order starting from the specified node
-    int order_start = dfs1(start_node, n_vertices, used, order, 0, adj);
+    int order_start = dfs1_iterative(start_node, n_vertices, used, order, 0, adj);
+    printf("DFS order start: %d\n", order_start);
     for (int i = 0; i < n_vertices; ++i) {
         if (!used[i]) // handle the case where the graph is not connected
-            dfs1(i, n_vertices, used, order, order_start, adj);
+            printf("DFS additional: %d\n", i);
+            dfs1_iterative(i, n_vertices, used, order, order_start, adj);
     }
+    printf("used:\n");
+    print_array(used, n_vertices, n_vertices);
+    printf("DFS order:\n");
+    print_array(order, n_vertices, n_vertices);
 
     // identify the strongly connected components and create a topological order
     for (int i = 0, j = 0; i < n_vertices; ++i) {
@@ -105,7 +163,6 @@ __global__ void kernel_solve_2SAT(bool* results, bool* solvable, int start_node,
     int current_vertex = tid + start_node;
     int n_vertices = 2 * n_vars;
     if (current_vertex < n_vertices) {
-        printf("Solving 2-SAT problem for starting node %d\n", current_vertex);
         bool* assignment = (bool*)malloc(n_vars * sizeof(bool));
         int* order = (int*)malloc(n_vertices * sizeof(int));
         int* comp = (int*)malloc(n_vertices * sizeof(int));

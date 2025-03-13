@@ -24,11 +24,13 @@ struct TwoSatSolverLinear {
         std::ifstream file(filepath);
         std::vector<Literal> vars;
         std::string var1, var2;
+        if (!file.is_open()) {
+            throw std::runtime_error("Could not open file: " + filepath);
+        }
         while (file >> var1 >> var2) {
             vars.push_back(Literal(var1));
             vars.push_back(Literal(var2));
         }
-
         Literal max_var = *max_element(vars.begin(), vars.end());
         n_vars = max_var.value + 1;
         n_vertices = 2 * n_vars;

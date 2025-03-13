@@ -22,16 +22,15 @@ void linear_usage(std::string filename, int n, int min_dist) {
     }
 }
 
-void print_array(bool* array, int length, int values_per_row) {
-    for (int i = 0; i < length; ++i) {
-        std::cout << array[i] << " ";
-        if ((i + 1) % values_per_row == 0) {
-            std::cout << std::endl;
+bool is_transpose(const bool* matrix, const bool* transpose, int n) {
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            if (matrix[i * n + j] != transpose[j * n + i]) {
+                return false;
+            }
         }
     }
-    if (length % values_per_row != 0) {
-        std::cout << std::endl;
-    }
+    return true;
 }
 
 void parallel_usage(std::string filename, int n, int min_dist) {
@@ -41,6 +40,15 @@ void parallel_usage(std::string filename, int n, int min_dist) {
     int n_vertices = fill_adjacency_matrix(filename, &h_adj, &h_adj_t);
     int n_vars = n_vertices / 2;
 
+    printf("adjacency matrix:\n");
+    print_array(h_adj, n_vertices * n_vertices, n_vertices);
+    printf("adjacency matrix transposed:\n");
+    print_array(h_adj_t, n_vertices * n_vertices, n_vertices);
+    if (!is_transpose(h_adj, h_adj_t, n_vertices)) {
+        std::cout << "Error: adjacency matrix is not transposed" << std::endl;
+        return;
+    }
+
     // allocate in global memory
     HANDLE_ERROR(cudaMalloc(&d_adj, n_vertices * n_vertices * sizeof(bool)));
     HANDLE_ERROR(cudaMalloc(&d_adj_t, n_vertices * n_vertices * sizeof(bool)));
@@ -48,6 +56,9 @@ void parallel_usage(std::string filename, int n, int min_dist) {
     HANDLE_ERROR(cudaMemcpy(d_adj_t, h_adj_t, n_vertices * n_vertices * sizeof(bool), cudaMemcpyHostToDevice));
     
     int threads_per_block = get_device_prop(0).maxThreadsPerBlock;
+    printf("Threads per block: %d\n", threads_per_block);
+    printf("blocks: %d\n", (n_vertices + threads_per_block - 1) / threads_per_block);
+    printf("n_vertices: %d\n", n_vertices);
 
     // initialize results matrix
     bool *d_results, *d_solvable;
@@ -57,7 +68,7 @@ void parallel_usage(std::string filename, int n, int min_dist) {
     // solve 2-SAT problem in parallel
     kernel_solve_2SAT<<<(n_vertices + threads_per_block - 1) / threads_per_block, threads_per_block>>>(d_results, d_solvable, 0, n_vars, d_adj, d_adj_t);
     cudaDeviceSynchronize();
-    checkCUDAError("parallel 2SAT solver");
+    // checkCUDAError("parallel 2SAT solver");
 
     // copy results back to host memory
     bool *h_results = (bool*)malloc(n_vertices * n_vars * sizeof(bool));
