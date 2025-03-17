@@ -119,6 +119,25 @@ __device__ void dfs2(int v, int cl, int n_vertices, int* comp, bool* adj_t) {
     }
 }
 
+__device__ void dfs2_iterative(int v, int cl, int n_vertices, int* comp, bool* adj_t) {
+    int* stack = (int*)malloc(n_vertices * sizeof(int));
+    int stack_size = 0;
+    stack[stack_size++] = v;
+
+    while (stack_size > 0) {
+        int current = stack[--stack_size];
+        if (comp[current] == -1) {
+            comp[current] = cl;
+            for (int u = 0; u < n_vertices; ++u) {
+                if (adj_t[current * n_vertices + u] && comp[u] == -1) {
+                    stack[stack_size++] = u;
+                }
+            }
+        }
+    }
+    free(stack);
+}
+
 __device__ bool solve_2SAT(int n_vars, int n_vertices, bool* used, int* order, int* comp, bool* adj, bool* adj_t, bool* assignment, int start_node = 0) {
     for (int i = 0; i < n_vertices; ++i) {
         order[i] = -1;
@@ -127,16 +146,10 @@ __device__ bool solve_2SAT(int n_vars, int n_vertices, bool* used, int* order, i
     }
     // prepare the dfs order starting from the specified node
     int order_start = dfs1_iterative(start_node, n_vertices, used, order, 0, adj);
-    printf("DFS order start: %d\n", order_start);
     for (int i = 0; i < n_vertices; ++i) {
         if (!used[i]) // handle the case where the graph is not connected
-            printf("DFS additional: %d\n", i);
-            dfs1_iterative(i, n_vertices, used, order, order_start, adj);
+            order_start = dfs1_iterative(i, n_vertices, used, order, order_start, adj);
     }
-    printf("used:\n");
-    print_array(used, n_vertices, n_vertices);
-    printf("DFS order:\n");
-    print_array(order, n_vertices, n_vertices);
 
     // identify the strongly connected components and create a topological order
     for (int i = 0, j = 0; i < n_vertices; ++i) {
