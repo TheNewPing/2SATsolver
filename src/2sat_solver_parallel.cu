@@ -74,42 +74,6 @@ int fill_adjacency_matrix(std::string filepath, bool** adj, bool** adj_t) {
 }
 
 __device__ int dfs1(int v, int n_vertices, bool* used, int* order, int order_start, bool* adj) {
-    used[v] = true;
-    int new_order_start = order_start;
-    for (int u = 0; u < n_vertices; ++u) {
-        if (adj[v * n_vertices + u] && !used[u])
-            new_order_start = dfs1(u, n_vertices, used, order, new_order_start, adj);
-    }
-    order[new_order_start] = v;
-    return new_order_start + 1;
-}
-
-__device__ int dfs1_iterative(int v, int n_vertices, bool* used, int* order, int order_start, bool* adj) {
-    int* stack = (int*)malloc(n_vertices * sizeof(int));
-    int stack_idx = 0;
-    stack[stack_idx] = v;
-    used[v] = true;
-
-    while (stack_idx >= 0) {
-        int current = stack[stack_idx];
-        bool completed = true;
-        for (int u = 0; u < n_vertices; ++u) {
-            if (adj[current * n_vertices + u] && !used[u]) {
-                completed = false;
-                stack[++stack_idx] = u;
-                used[u] = true;
-            }
-        }
-        if (completed) {
-            order[order_start++] = current;
-            stack_idx--;
-        }
-    }
-    free(stack);
-    return order_start;
-}
-
-__device__ int dfs1_new(int v, int n_vertices, bool* used, int* order, int order_start, bool* adj) {
     int* predecessors = (int*)malloc(n_vertices * sizeof(int));
     for (int i = 0; i < n_vertices; ++i) {
         predecessors[i] = -1;
@@ -136,14 +100,6 @@ __device__ int dfs1_new(int v, int n_vertices, bool* used, int* order, int order
 }
 
 __device__ void dfs2(int v, int cl, int n_vertices, int* comp, bool* adj_t) {
-    comp[v] = cl;
-    for (int u = 0; u < n_vertices; ++u) {
-        if (adj_t[v * n_vertices + u] && comp[u] == -1)
-            dfs2(u, cl, n_vertices, comp, adj_t);
-    }
-}
-
-__device__ void dfs2_iterative(int v, int cl, int n_vertices, int* comp, bool* adj_t) {
     int* stack = (int*)malloc(n_vertices * sizeof(int));
     int stack_size = 0;
     stack[stack_size++] = v;
@@ -169,17 +125,17 @@ __device__ bool solve_2SAT(int n_vars, int n_vertices, bool* used, int* order, i
         comp[i] = -1;
     }
     // prepare the dfs order starting from the specified node
-    int order_start = dfs1_new(start_node, n_vertices, used, order, 0, adj);
+    int order_start = dfs1(start_node, n_vertices, used, order, 0, adj);
     for (int i = 0; i < n_vertices; ++i) {
         if (!used[i]) // handle the case where the graph is not connected
-            order_start = dfs1_new(i, n_vertices, used, order, order_start, adj);
+            order_start = dfs1(i, n_vertices, used, order, order_start, adj);
     }
 
     // identify the strongly connected components and create a topological order
     for (int i = 0, j = 0; i < n_vertices; ++i) {
         int v = order[n_vertices - i - 1];
         if (comp[v] == -1)
-            dfs2_iterative(v, j++, n_vertices, comp, adj_t);
+            dfs2(v, j++, n_vertices, comp, adj_t);
     }
 
     for (int i = 0; i < n_vars; ++i) {
