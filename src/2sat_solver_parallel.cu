@@ -1,6 +1,5 @@
 #include <iostream>
 #include <vector>
-#include <cassert>
 #include <algorithm>
 #include <fstream>
 
@@ -87,27 +86,52 @@ __device__ int dfs1(int v, int n_vertices, bool* used, int* order, int order_sta
 
 __device__ int dfs1_iterative(int v, int n_vertices, bool* used, int* order, int order_start, bool* adj) {
     int* stack = (int*)malloc(n_vertices * sizeof(int));
-    int stack_size = 0;
-    stack[stack_size] = v;
+    int stack_idx = 0;
+    stack[stack_idx] = v;
+    used[v] = true;
 
-    while (stack_size >= 0) {
-        int current = stack[stack_size];
+    while (stack_idx >= 0) {
+        int current = stack[stack_idx];
         bool completed = true;
-        if (!used[current]) {
-            used[current] = true;
-            for (int u = 0; u < n_vertices; ++u) {
-                if (adj[current * n_vertices + u] && !used[u]) {
-                    completed = false;
-                    stack[++stack_size] = u;
-                }
+        for (int u = 0; u < n_vertices; ++u) {
+            if (adj[current * n_vertices + u] && !used[u]) {
+                completed = false;
+                stack[++stack_idx] = u;
+                used[u] = true;
             }
         }
         if (completed) {
             order[order_start++] = current;
-            stack_size--;
+            stack_idx--;
         }
     }
     free(stack);
+    return order_start;
+}
+
+__device__ int dfs1_new(int v, int n_vertices, bool* used, int* order, int order_start, bool* adj) {
+    int* predecessors = (int*)malloc(n_vertices * sizeof(int));
+    for (int i = 0; i < n_vertices; ++i) {
+        predecessors[i] = -1;
+    }
+    int current = v;
+    while (current != -1) {
+        used[current] = true;
+        int completed = true;
+        for (int u = 0; u < n_vertices; ++u) {
+            if (adj[current * n_vertices + u] && !used[u]) {
+                predecessors[u] = current;
+                current = u;
+                completed = false;
+                break;
+            }
+        }
+        if (completed) {
+            order[order_start++] = current;
+            current = predecessors[current];
+        }
+    }
+    free(predecessors);
     return order_start;
 }
 
@@ -145,17 +169,17 @@ __device__ bool solve_2SAT(int n_vars, int n_vertices, bool* used, int* order, i
         comp[i] = -1;
     }
     // prepare the dfs order starting from the specified node
-    int order_start = dfs1_iterative(start_node, n_vertices, used, order, 0, adj);
+    int order_start = dfs1_new(start_node, n_vertices, used, order, 0, adj);
     for (int i = 0; i < n_vertices; ++i) {
         if (!used[i]) // handle the case where the graph is not connected
-            order_start = dfs1_iterative(i, n_vertices, used, order, order_start, adj);
+            order_start = dfs1_new(i, n_vertices, used, order, order_start, adj);
     }
 
     // identify the strongly connected components and create a topological order
     for (int i = 0, j = 0; i < n_vertices; ++i) {
         int v = order[n_vertices - i - 1];
         if (comp[v] == -1)
-            dfs2(v, j++, n_vertices, comp, adj_t);
+            dfs2_iterative(v, j++, n_vertices, comp, adj_t);
     }
 
     for (int i = 0; i < n_vars; ++i) {
@@ -180,6 +204,35 @@ __global__ void kernel_solve_2SAT(bool* results, bool* solvable, int start_node,
         int* order = (int*)malloc(n_vertices * sizeof(int));
         int* comp = (int*)malloc(n_vertices * sizeof(int));
         bool* used = (bool*)malloc(n_vertices * sizeof(bool));
+
+        if (assignment == nullptr) {
+            printf("Memory allocation failed for assignment array at starting node %d\n", current_vertex);
+            free(order);
+            free(comp);
+            free(used);
+            return;
+        }
+        if (order == nullptr) {
+            printf("Memory allocation failed for order array at starting node %d\n", current_vertex);
+            free(assignment);
+            free(comp);
+            free(used);
+            return;
+        }
+        if (comp == nullptr) {
+            printf("Memory allocation failed for comp array at starting node %d\n", current_vertex);
+            free(assignment);
+            free(order);
+            free(used);
+            return;
+        }
+        if (used == nullptr) {
+            printf("Memory allocation failed for used array at starting node %d\n", current_vertex);
+            free(assignment);
+            free(order);
+            free(comp);
+            return;
+        }
         if (solve_2SAT(n_vars, n_vertices, used, order, comp, adj, adj_t, assignment, current_vertex)) {
             solvable[current_vertex] = true;
             for (int i = 0; i < n_vars; ++i) {

@@ -53,8 +53,9 @@ void parallel_usage(std::string filename, int n, int min_dist) {
     
     int max_threads = get_device_prop(0).maxThreadsPerBlock;
     int threads_per_block = std::min(max_threads, n_vertices);
+    int n_blocks = (n_vertices + threads_per_block - 1) / threads_per_block;
     printf("Threads per block: %d\n", threads_per_block);
-    printf("blocks: %d\n", (n_vertices + threads_per_block - 1) / threads_per_block);
+    printf("blocks: %d\n", n_blocks);
     printf("n_vertices: %d\n", n_vertices);
 
     // initialize results matrix
@@ -64,9 +65,22 @@ void parallel_usage(std::string filename, int n, int min_dist) {
 
     // cudaDeviceSetLimit(cudaLimitStackSize, 1024 * sizeof(int));
     // checkCUDAError("setting stack size");
+    size_t d_adj_size = n_vertices * n_vertices * sizeof(bool);
+    size_t d_adj_t_size = n_vertices * n_vertices * sizeof(bool);
+    size_t d_solvable_size = n_vertices * sizeof(bool);
+    size_t d_results_size = n_vertices * n_vars * sizeof(bool);
+    size_t assignment_size = n_vars * sizeof(bool);
+    size_t order_size = n_vertices * sizeof(int);
+    size_t comp_size = n_vertices * sizeof(int);
+    size_t used_size = n_vertices * sizeof(bool);
+    size_t dfs_stack_size = n_vertices * sizeof(int);
+    size_t byte_per_thread = assignment_size + order_size + comp_size + used_size + dfs_stack_size;
+    size_t total_bytes = byte_per_thread * threads_per_block * n_blocks + d_adj_size + d_adj_t_size + d_solvable_size + d_results_size;
+    printf("Total bytes: %lu\n", total_bytes);
+    cudaDeviceSetLimit(cudaLimitMallocHeapSize, total_bytes);
 
     // solve 2-SAT problem in parallel
-    kernel_solve_2SAT<<<(n_vertices + threads_per_block - 1) / threads_per_block, threads_per_block>>>(d_results, d_solvable, 0, n_vars, d_adj, d_adj_t);
+    kernel_solve_2SAT<<<n_blocks, threads_per_block>>>(d_results, d_solvable, 0, n_vars, d_adj, d_adj_t);
     cudaDeviceSynchronize();
     checkCUDAError("parallel 2SAT solver");
 
