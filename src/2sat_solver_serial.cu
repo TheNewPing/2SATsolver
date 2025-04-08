@@ -7,7 +7,7 @@
 
 #include "../include/literal.cu"
 
-struct TwoSatSolverLinear {
+struct TwoSatSolverSerial {
     int n_vars;
     int n_vertices;
     std::vector<std::vector<int>> adj, adj_t;
@@ -16,11 +16,11 @@ struct TwoSatSolverLinear {
     std::vector<bool> assignment;
     std::unordered_set<std::vector<bool>> solutions;
 
-    TwoSatSolverLinear(int _n_vars) : n_vars(_n_vars), n_vertices(2 * n_vars), adj(n_vertices), adj_t(n_vertices), used(n_vertices), order(), comp(n_vertices, -1), assignment(n_vars) {
+    TwoSatSolverSerial(int _n_vars) : n_vars(_n_vars), n_vertices(2 * n_vars), adj(n_vertices), adj_t(n_vertices), used(n_vertices), order(), comp(n_vertices, -1), assignment(n_vars) {
         order.reserve(n_vertices);
     }
 
-    TwoSatSolverLinear(const std::string& filepath) {
+    TwoSatSolverSerial(const std::string& filepath) {
         std::ifstream file(filepath);
         std::vector<Literal> vars;
         std::string var1, var2;
@@ -132,7 +132,7 @@ struct TwoSatSolverLinear {
     }
 
     static void example_usage() {
-        TwoSatSolverLinear solver(3); // a, b, c
+        TwoSatSolverSerial solver(3); // a, b, c
         solver.add_disjunction(Literal(0, true), Literal(1, false));  //     a  v  not b
         solver.add_disjunction(Literal(0, false), Literal(1, false));   // not a  v  not b
         solver.add_disjunction(Literal(1, true), Literal(2, true)); //     b  v      c
