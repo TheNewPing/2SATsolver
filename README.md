@@ -4,7 +4,7 @@ Lists K solutions of a 2 SAT instance, having a minimum Hamming distance between
 
 ## Usage
 
-A usage example can be compiled with `nvcc src/main.cu -o bin/main`. I can then be used with `bin/main [test_file]`. Many test files can be found in the `test_data` directory.
+A usage example can be compiled with `nvcc src/main.cu -o bin/main`. It can then be used with `bin/main [test_file]`. Many test files can be found in the `test_data` directory.
 
 ## Instance generator
 
