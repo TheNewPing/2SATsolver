@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <fstream>
+#include <random>
 
 #include "../include/literal.cu"
 
@@ -135,52 +136,64 @@ struct TwoSat2SCC {
         return true;
     }
 
-    void build_candidates(int max_solutions) {
-        candidates.clear();
-        std::unordered_map<int, std::unordered_set<int>> adj_comp_t_copy = adj_comp_t;
+    void build_candidates(int max_solutions, bool init) {
         std::vector<int> c;
-        // Create the first candidate
-        while (!adj_comp_t_copy.empty()) {
-            for (auto it = adj_comp_t_copy.cbegin(); it != adj_comp_t_copy.cend();) {
-                if (it->second.empty()) {
-                    int val = it->first;
-                    // Remove the element at the same index from adj_comp_t_copy
-                    adj_comp_t_copy.erase(it++);
-                    for (auto jt = adj_comp_t_copy.begin(); jt != adj_comp_t_copy.end(); ++jt) {
-                        jt->second.erase(val);
+        if (init) {
+            candidates.clear();
+            std::unordered_map<int, std::unordered_set<int>> adj_comp_t_copy = adj_comp_t;
+            // Create the first candidate
+            while (!adj_comp_t_copy.empty()) {
+                for (auto it = adj_comp_t_copy.cbegin(); it != adj_comp_t_copy.cend();) {
+                    if (it->second.empty()) {
+                        int val = it->first;
+                        // Remove the element at the same index from adj_comp_t_copy
+                        adj_comp_t_copy.erase(it++);
+                        for (auto jt = adj_comp_t_copy.begin(); jt != adj_comp_t_copy.end(); ++jt) {
+                            jt->second.erase(val);
+                        }
+                        c.push_back(val);
                     }
-                    c.push_back(val);
-                }
-                else {
-                    ++it;
+                    else {
+                        ++it;
+                    }
                 }
             }
+            candidates.push_back(c);
+        } else {
+            c = std::vector<int>(candidates.back());
+            candidates.clear();
         }
-        candidates.push_back(c);
         // Generate all candidates by swapping elements starting from the first one
         while (candidates.size() < max_solutions) {
-            for (int i = 0; i < c.size() - 1; ++i) {
-                for (int j = i + 1; j < c.size(); ++j) {
-                    std::swap(c[i], c[j]);
-                    bool valid = true;
-                    // Check if the new candidate is valid
-                    for (int k = 0; k < j; ++k) {
-                        if (adj_comp_t[c[k]].find(c[j]) != adj_comp_t[c[k]].end()) {
-                            valid = false;
-                            break;
-                        }
-                    }
-                    if (valid) {
-                        candidates.push_back(c);
-                        // Check if we have reached the maximum number of solutions
-                        if (candidates.size() >= max_solutions) {
-                            return;
-                        }
-                    } else {
-                        // If the candidate is not valid, swap back
-                        std::swap(c[i], c[j]);
-                    }
+            std::random_device rd;  // a seed source for the random number engine
+            std::mt19937 gen(rd()); // mersenne_twister_engine seeded with rd()
+            std::uniform_int_distribution<> distrib(0, c.size() - 1);
+            int i, j;
+            do {
+                i = distrib(gen);
+                j = distrib(gen);
+            } while (i == j);
+            if (i > j) {
+                std::swap(i, j);
+            }
+            std::swap(c[i], c[j]);
+            bool valid = true;
+            // Check if the new candidate is valid
+            for (int k = 0; k < j; ++k) {
+                if (adj_comp_t[c[k]].find(c[j]) != adj_comp_t[c[k]].end()) {
+                    valid = false;
+                    break;
                 }
+            }
+            if (valid) {
+                candidates.push_back(c);
+                // Check if we have reached the maximum number of solutions
+                if (candidates.size() >= max_solutions) {
+                    return;
+                }
+            } else {
+                // If the candidate is not valid, swap back
+                std::swap(c[i], c[j]);
             }
         }
     }

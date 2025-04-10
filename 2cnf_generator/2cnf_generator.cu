@@ -3,24 +3,11 @@
 #include <curand_kernel.h>
 #include <ctime>
 #include <cassert>
+#include <random>
 
 #include "../include/cuda_error.cu"
 #include "../include/cuda_utilities.cu"
 #include "../include/literal.cu"
-
-__global__ void generate2CNF(Literal* formulas, int n, int num_vars, unsigned long long seed) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) {
-        curandState state;
-        curand_init(seed, idx, 0, &state);
-        unsigned int var1 = (curand(&state) % num_vars);
-        unsigned int var2 = (curand(&state) % num_vars);
-        bool sign1 = (curand(&state) % 2);
-        bool sign2 = (curand(&state) % 2);
-        formulas[idx * 2] = Literal(var1, sign1);
-        formulas[idx * 2 + 1] = Literal(var2, sign2);
-    }
-}
 
 bool is_used(Literal* formulas, int n, unsigned int var_name) {
     for (int i = 0; i < n*2; ++i) {
@@ -71,26 +58,28 @@ void print_array(Literal* array, int size) {
     std::cout << std::endl;
 }
 
-int main() {
-    int n, num_vars;
-    std::cout << "Enter the number of 2-CNF formulas: ";
-    std::cin >> n;
-    std::cout << "Enter the maximum number of variables: ";
-    std::cin >> num_vars;
-    std::string filename;
-    std::cout << "Enter the output filename: ";
-    std::cin >> filename;
+int main(int argc, char* argv[]) {
+    if (argc != 4) {
+        std::cerr << "Usage: " << argv[0] << " <number_of_2CNF_formulas> <max_number_of_variables> <output_filename>\n";
+        return 1;
+    }
 
-    Literal* d_formulas;
+    int n = std::stoi(argv[1]);
+    int num_vars = std::stoi(argv[2]);
+    std::string filename = argv[3];
+
     Literal* h_formulas = (Literal*)malloc(sizeof(Literal) * n * 2);
-    int threads_per_block = get_device_prop(0).maxThreadsPerBlock;
 
-    HANDLE_ERROR(cudaMalloc(&d_formulas, n * 2 * sizeof(Literal)));
-    unsigned long long seed = time(0);
-    generate2CNF<<<(n + threads_per_block - 1) / threads_per_block, threads_per_block>>>(d_formulas, n, num_vars, seed);
-    cudaDeviceSynchronize();
-    checkCUDAError("2CNF generation");
-    HANDLE_ERROR(cudaMemcpy(h_formulas, d_formulas, n * 2 * sizeof(Literal), cudaMemcpyDeviceToHost));
+    std::random_device rd;  // a seed source for the random number engine
+    std::mt19937 gen(rd()); // mersenne_twister_engine seeded with rd()
+    std::uniform_int_distribution<> distrib_n(0, n-1);
+    std::uniform_int_distribution<> distrib_sign(0, 1);
+    
+    for (int i = 0; i < n * 2; ++i) {
+        unsigned int var_name = distrib_n(gen);
+        bool sign = distrib_sign(gen);
+        h_formulas[i] = Literal(var_name, sign);
+    }
 
     compact_formulas(h_formulas, n, num_vars);
     assert_compactness(h_formulas, n, num_vars);
@@ -101,7 +90,6 @@ int main() {
     }
     outfile.close();
 
-    HANDLE_ERROR(cudaFree(d_formulas));
     delete[] h_formulas;
 
     return 0;
