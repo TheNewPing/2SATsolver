@@ -140,24 +140,8 @@ struct TwoSat2SCC {
         std::vector<int> c;
         if (init) {
             candidates.clear();
-            std::unordered_map<int, std::unordered_set<int>> adj_comp_t_copy = adj_comp_t;
-            // Create the first candidate
-            while (!adj_comp_t_copy.empty()) {
-                for (auto it = adj_comp_t_copy.cbegin(); it != adj_comp_t_copy.cend();) {
-                    if (it->second.empty()) {
-                        int val = it->first;
-                        // Remove the element at the same index from adj_comp_t_copy
-                        adj_comp_t_copy.erase(it++);
-                        for (auto jt = adj_comp_t_copy.begin(); jt != adj_comp_t_copy.end(); ++jt) {
-                            jt->second.erase(val);
-                        }
-                        c.push_back(val);
-                    }
-                    else {
-                        ++it;
-                    }
-                }
-            }
+            c.resize(infl_comp.size());
+            std::iota(c.begin(), c.end(), 0);
             candidates.push_back(c);
         } else {
             c = std::vector<int>(candidates.back());
@@ -231,7 +215,11 @@ struct TwoSat2SCC {
     }
 
     int* arrayify_candidates() {
-        int* candidates_array = new int[candidates.size() * candidates[0].size()];
+        int* candidates_array = (int*)malloc(candidates.size() * candidates[0].size() * sizeof(int));
+        if (!candidates_array) {
+            std::cerr << "Memory allocation failed for candidates_array." << std::endl;
+            return nullptr;
+        }
         for (size_t i = 0; i < candidates.size(); ++i) {
             std::copy(candidates[i].begin(), candidates[i].end(), candidates_array + i * candidates[0].size());
         }
@@ -239,7 +227,11 @@ struct TwoSat2SCC {
     }
 
     bool* arrayify_infl_comp() {
-        bool* infl_comp_array = new bool[infl_comp.size() * infl_comp.size()];
+        bool* infl_comp_array = (bool*)malloc(infl_comp.size() * infl_comp.size() * sizeof(bool));
+        if (!infl_comp_array) {
+            std::cerr << "Memory allocation failed for infl_comp_array." << std::endl;
+            return nullptr;
+        }
         std::fill(infl_comp_array, infl_comp_array + infl_comp.size() * infl_comp.size(), false);
         for (size_t i = 0; i < infl_comp.size(); ++i) {
             for (int val : infl_comp[i]) {
@@ -250,7 +242,11 @@ struct TwoSat2SCC {
     }
 
     int* arrayify_comp() {
-        int* comp_array = new int[comp.size()];
+        int* comp_array = (int*)malloc(comp.size() * sizeof(int));
+        if (!comp_array) {
+            std::cerr << "Memory allocation failed for comp_array." << std::endl;
+            return nullptr;
+        }
         std::copy(comp.begin(), comp.end(), comp_array);
         return comp_array;
     }
