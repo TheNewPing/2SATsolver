@@ -3,24 +3,11 @@
 #include <curand_kernel.h>
 #include <ctime>
 #include <cassert>
+#include <random>
 
 #include "../include/cuda_error.cu"
 #include "../include/cuda_utilities.cu"
 #include "../include/literal.cu"
-
-__global__ void generate2CNF(Literal* formulas, int n, int num_vars, unsigned long long seed) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) {
-        curandState state;
-        curand_init(seed, idx, 0, &state);
-        unsigned int var1 = (curand(&state) % num_vars);
-        unsigned int var2 = (curand(&state) % num_vars);
-        bool sign1 = (curand(&state) % 2);
-        bool sign2 = (curand(&state) % 2);
-        formulas[idx * 2] = Literal(var1, sign1);
-        formulas[idx * 2 + 1] = Literal(var2, sign2);
-    }
-}
 
 bool is_used(Literal* formulas, int n, unsigned int var_name) {
     for (int i = 0; i < n*2; ++i) {
@@ -49,7 +36,7 @@ void compact_formulas(Literal* formulas, int n, int num_vars) {
     }
 }
 
-void assert_compactness(Literal* formulas, int n, int num_vars) {
+void assert_compactness(Literal* formulas, int n) {
     unsigned int max_var = 0;
     for (int i = 0; i < n * 2; ++i) {
         if (formulas[i].value > max_var) {
@@ -71,29 +58,52 @@ void print_array(Literal* array, int size) {
     std::cout << std::endl;
 }
 
-int main() {
-    int n, num_vars;
-    std::cout << "Enter the number of 2-CNF formulas: ";
-    std::cin >> n;
-    std::cout << "Enter the maximum number of variables: ";
-    std::cin >> num_vars;
-    std::string filename;
-    std::cout << "Enter the output filename: ";
-    std::cin >> filename;
+int main(int argc, char* argv[]) {
+    if (argc != 4) {
+        std::cerr << "Usage: " << argv[0] << " <number_of_2CNF_formulas> <new_variable_probability> <output_filename>\n";
+        return 1;
+    }
 
-    Literal* d_formulas;
+    int n = std::stoi(argv[1]);
+    if (n <= 0) {
+        std::cerr << "Error: number_of_2CNF_formulas must be a positive integer.\n";
+        return 1;
+    }
+    float new_variable_probability = std::stof(argv[2]);
+    if (new_variable_probability < 0.0f || new_variable_probability > 1.0f) {
+        std::cerr << "Error: new_variable_probability must be between 0 and 1.\n";
+        return 1;
+    }
+    std::string filename = argv[3];
+    if (filename.empty()) {
+        std::cerr << "Error: output_filename cannot be empty.\n";
+        return 1;
+    }
+
     Literal* h_formulas = (Literal*)malloc(sizeof(Literal) * n * 2);
-    int threads_per_block = get_device_prop(0).maxThreadsPerBlock;
 
-    HANDLE_ERROR(cudaMalloc(&d_formulas, n * 2 * sizeof(Literal)));
-    unsigned long long seed = time(0);
-    generate2CNF<<<(n + threads_per_block - 1) / threads_per_block, threads_per_block>>>(d_formulas, n, num_vars, seed);
-    cudaDeviceSynchronize();
-    checkCUDAError("2CNF generation");
-    HANDLE_ERROR(cudaMemcpy(h_formulas, d_formulas, n * 2 * sizeof(Literal), cudaMemcpyDeviceToHost));
-
-    compact_formulas(h_formulas, n, num_vars);
-    assert_compactness(h_formulas, n, num_vars);
+    std::random_device rd;  // a seed source for the random number engine
+    std::mt19937 gen(rd()); // mersenne_twister_engine seeded with rd()
+    std::bernoulli_distribution distrib_sign(0.5);
+    std::bernoulli_distribution distrib_new_var(new_variable_probability);
+    
+    int max_var = 0;
+    unsigned int var_name = 0;
+    bool sign = distrib_sign(gen);
+    h_formulas[0] = Literal(var_name, sign);
+    std::uniform_int_distribution<unsigned int> distrib_n(0, max_var);
+    for (int i = 1; i < n * 2; ++i) {
+        bool new_var = distrib_new_var(gen);
+        if (new_var) {
+            max_var++;
+            distrib_n = std::uniform_int_distribution<unsigned int>(0, max_var);
+            var_name = max_var;
+        } else {
+            var_name = distrib_n(gen);
+        }
+        sign = distrib_sign(gen);
+        h_formulas[i] = Literal(var_name, sign);
+    }
 
     std::ofstream outfile(filename);
     for (int i = 0; i < n; ++i) {
@@ -101,7 +111,6 @@ int main() {
     }
     outfile.close();
 
-    HANDLE_ERROR(cudaFree(d_formulas));
     delete[] h_formulas;
 
     return 0;

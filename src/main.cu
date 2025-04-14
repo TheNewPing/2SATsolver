@@ -1,19 +1,85 @@
 #include <cassert>
+#include <chrono>
 
-#include "2sat_solver_linear.cu"
+#include "2sat2scc.cu"
 #include "2sat_solver_parallel.cu"
+#include "2sat_solver_serial.cu"
 
-#include "../include/cuda_error.cu"
-#include "../include/cuda_utilities.cu"
+void parallel_usage(std::string filename, int n, int min_dist) {
+    TwoSat2SCC sccs = TwoSat2SCC(filename);
+    int n_vars = sccs.n_vars;
+    int n_vertices = sccs.n_vertices;
 
-void linear_usage(std::string filename, int n, int min_dist) {
-    TwoSatSolverLinear solver_lin = TwoSatSolverLinear(filename);
-    if (!solver_lin.solve_2SAT()) {
+    printf("building SCC...\n");
+    if (!sccs.build_SCC()) {
+        printf("No solution found.\n");
+        return;
+    }
+    printf("building SCC done.\n");
+    // printf("sccs.comp:\n");
+    // for (const auto& c : sccs.comp) {
+        // printf("%d ", c);
+    // }
+    // printf("\n");
+
+    // prepare output
+    bool *out_results = (bool*)malloc(n * n_vars * sizeof(bool));
+    int n_out_results = 0;
+    bool init = true;
+
+    while (n_out_results < n) {
+        printf("Current number of solutions: %d\n", n_out_results);
+
+        int *h_candidates;
+        bool *h_infl_comp;
+        int *h_comp;
+        arrayify_sccs(&sccs, n, init, &h_candidates, &h_infl_comp, &h_comp);
+        int n_sol = sccs.candidates.size();
+        int n_comp = sccs.infl_comp.size();
+        // printf("n_sol: %d, n_comp: %d\n", n_sol, n_comp);
+        
+        int max_threads = get_device_prop(0).maxThreadsPerBlock;
+        int max_blocks = get_device_prop(0).maxGridSize[0];
+        // printf("max_threads: %d, max_blocks: %d\n", max_threads, max_blocks);
+
+        // ----------- Compute solutions based on sccs ----------- 
+        int *d_comp;
+        bool *d_sol_comp;
+        compute_sccs_solutions(max_threads, max_blocks, n_comp, n_sol, n_vars, n_vertices,
+                               h_candidates, h_infl_comp, h_comp,
+                               &d_comp, &d_sol_comp);
+
+        // ----------- Transfer sccs solutions to variable solutions ----------- 
+        bool *h_sol_var;
+        solutions_sccs_to_vars(max_threads, max_blocks, n_comp, n_sol, n_vars, n_vertices,
+                               d_comp, d_sol_comp, &h_sol_var);
+
+        // ----------- Compute compatibility between solutions based on min dist ----------- 
+        bool *h_sol_var_min_dist;
+        solutions_hamming_dist(max_threads, max_blocks, n_sol, n_vars, min_dist,
+                               n_out_results, out_results, h_sol_var, &h_sol_var_min_dist);
+
+        // ----------- Build the final results -----------
+        n_out_results = insert_new_solution(init, n_sol, n_vars, n, h_sol_var, h_sol_var_min_dist,
+                                            out_results, n_out_results);
+
+        init = false;
+    }
+
+    // print output
+    printf("Parallel solutions:\n");
+    print_array(out_results, n_out_results * n_vars, n_vars);
+
+}
+
+void serial_usage(std::string filename, int n, int min_dist) {
+    TwoSatSolverSerial solver_ser = TwoSatSolverSerial(filename);
+    if (!solver_ser.solve_2SAT()) {
         std::cout << "No solution" << std::endl;
         return;
     }
-    solver_lin.solve_from_all_nodes(n, min_dist);
-    for (const auto& sol : solver_lin.solutions) {
+    solver_ser.solve_from_all_nodes(n, min_dist);
+    for (const auto& sol : solver_ser.solutions) {
         std::cout << "solution: ";
         for (bool val : sol) {
             std::cout << val << " ";
@@ -22,133 +88,28 @@ void linear_usage(std::string filename, int n, int min_dist) {
     }
 }
 
-bool is_transpose(const bool* matrix, const bool* transpose, int n) {
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < n; ++j) {
-            if (matrix[i * n + j] != transpose[j * n + i]) {
-                return false;
-            }
-        }
-    }
-    return true;
-}
-
-void parallel_usage(std::string filename, int n, int min_dist) {
-    // initialize adjacency matrix
-    bool *h_adj, *h_adj_t;
-    bool *d_adj, *d_adj_t;
-    int n_vertices = fill_adjacency_matrix(filename, &h_adj, &h_adj_t);
-    int n_vars = n_vertices / 2;
-
-    if (!is_transpose(h_adj, h_adj_t, n_vertices)) {
-        std::cout << "Error: adjacency matrix is not transposed" << std::endl;
-        return;
-    }
-
-    // allocate in global memory
-    HANDLE_ERROR(cudaMalloc(&d_adj, n_vertices * n_vertices * sizeof(bool)));
-    HANDLE_ERROR(cudaMalloc(&d_adj_t, n_vertices * n_vertices * sizeof(bool)));
-    HANDLE_ERROR(cudaMemcpy(d_adj, h_adj, n_vertices * n_vertices * sizeof(bool), cudaMemcpyHostToDevice));
-    HANDLE_ERROR(cudaMemcpy(d_adj_t, h_adj_t, n_vertices * n_vertices * sizeof(bool), cudaMemcpyHostToDevice));
-    
-    int max_threads = get_device_prop(0).maxThreadsPerBlock;
-    int threads_per_block = std::min(max_threads, n_vertices);
-    int n_blocks = (n_vertices + threads_per_block - 1) / threads_per_block;
-    printf("Threads per block: %d\n", threads_per_block);
-    printf("blocks: %d\n", n_blocks);
-    printf("n_vertices: %d\n", n_vertices);
-
-    // initialize results matrix
-    bool *d_results, *d_solvable;
-    HANDLE_ERROR(cudaMalloc(&d_solvable, n_vertices * sizeof(bool)));
-    HANDLE_ERROR(cudaMalloc(&d_results, n_vertices * n_vars * sizeof(bool)));
-
-    // cudaDeviceSetLimit(cudaLimitStackSize, 1024 * sizeof(int));
-    // checkCUDAError("setting stack size");
-    size_t d_adj_size = n_vertices * n_vertices * sizeof(bool);
-    size_t d_adj_t_size = n_vertices * n_vertices * sizeof(bool);
-    size_t d_solvable_size = n_vertices * sizeof(bool);
-    size_t d_results_size = n_vertices * n_vars * sizeof(bool);
-    size_t assignment_size = n_vars * sizeof(bool);
-    size_t order_size = n_vertices * sizeof(int);
-    size_t comp_size = n_vertices * sizeof(int);
-    size_t used_size = n_vertices * sizeof(bool);
-    size_t dfs_stack_size = n_vertices * sizeof(int);
-    size_t byte_per_thread = assignment_size + order_size + comp_size + used_size + dfs_stack_size;
-    size_t total_bytes = byte_per_thread * threads_per_block * n_blocks + d_adj_size + d_adj_t_size + d_solvable_size + d_results_size;
-    printf("Total bytes: %lu\n", total_bytes);
-    cudaDeviceSetLimit(cudaLimitMallocHeapSize, total_bytes);
-
-    // solve 2-SAT problem in parallel
-    kernel_solve_2SAT<<<n_blocks, threads_per_block>>>(d_results, d_solvable, 0, n_vars, d_adj, d_adj_t);
-    cudaDeviceSynchronize();
-    checkCUDAError("parallel 2SAT solver");
-
-    // copy results back to host memory
-    bool *h_results = (bool*)malloc(n_vertices * n_vars * sizeof(bool));
-    bool *h_solvable = (bool*)malloc(n_vertices * sizeof(bool));
-    HANDLE_ERROR(cudaMemcpy(h_results, d_results, n_vertices * n_vars * sizeof(bool), cudaMemcpyDeviceToHost));
-    HANDLE_ERROR(cudaMemcpy(h_solvable, d_solvable, n_vertices * sizeof(bool), cudaMemcpyDeviceToHost));
-
-    // check if the 2-SAT problem is solvable for all starting nodes
-    // it should be solvable for all starting nodes, or from none of them
-    for (int i = 0; i < n_vertices; ++i) {
-        assert(h_solvable[i] == true);
-    }
-
-    // prepare output
-    int results_count = 0;
-    bool *out_results = (bool*)malloc(n * n_vars * sizeof(bool));
-    std::fill(out_results, out_results + n * n_vars, false);
-
-    // insert the first result
-    memcpy(out_results, h_results, n_vars * sizeof(bool));
-    ++results_count;
-
-    // insert the rest of the results
-    for (int i = 1; i < n_vertices && results_count < n; ++i) {
-        bool valid = true;
-        for (int k = 0; k < results_count; ++k) {
-            int hamming_dist = 0;
-            for (int j = 0; j < n_vars; ++j) {
-                if (h_results[i * n_vars + j] != out_results[k * n_vars + j])
-                    ++hamming_dist;
-            }
-            if (hamming_dist < min_dist) {
-                valid = false;
-                break;
-            }
-        }
-        if (valid) {
-            memcpy(out_results + results_count * n_vars, h_results + i * n_vars, n_vars * sizeof(bool));
-            ++results_count;
-        }
-    }
-
-    // print output
-    printf("Parallel solutions:\n");
-    print_array(out_results, results_count * n_vars, n_vars);
-
-    free(h_adj);
-    free(h_adj_t);
-    free(h_results);
-    free(h_solvable);
-    free(out_results);
-    cudaFree(d_adj);
-    cudaFree(d_adj_t);
-    cudaFree(d_results);
-    cudaFree(d_solvable);
-}
-
 int main(int argc, char** argv) {
-    if (argc < 2) {
-        std::cout << "Usage: " << argv[0] << " <filename>" << std::endl;
+    if (argc < 4) {
+        std::cout << "Usage: " << argv[0] << " <filename> <number of solutions> <min hamming dist>" << std::endl;
         return 1;
     }
     const char* filename = argv[1];
+    int n = std::stoi(argv[2]);
+    int min_dist = std::stoi(argv[3]);
+
+    auto start_ser = std::chrono::high_resolution_clock::now();
+    serial_usage(filename, n, min_dist);
+    auto end_ser = std::chrono::high_resolution_clock::now();
+    auto ms_ser = std::chrono::duration_cast<std::chrono::milliseconds>(end_ser - start_ser);
     
-    linear_usage(filename, 10, 1);
-    parallel_usage(filename, 10, 1);
+    auto start_par = std::chrono::high_resolution_clock::now();
+    parallel_usage(filename, n, min_dist);
+    auto end_par = std::chrono::high_resolution_clock::now();
+    auto ms_par = std::chrono::duration_cast<std::chrono::milliseconds>(end_par - start_par);
+    
+    std::cout << "Serial time: " << ms_ser.count() << " ms" << std::endl;
+    std::cout << "Parallel time: " << ms_par.count() << " ms" << std::endl;
+    std::cout << "Speedup: " << (double)ms_ser.count() / ms_par.count() << "x" << std::endl;
 
     return 0;
 }

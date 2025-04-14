@@ -40,4 +40,15 @@ void print_prop_summary(int i) {
     printf( "\n" );
 }
 
+void set_heap_size(size_t max_heap_size) {
+    size_t free_mem, total_mem;
+    HANDLE_ERROR(cudaMemGetInfo(&free_mem, &total_mem));
+    if (max_heap_size > free_mem) {
+        std::cerr << "Not enough memory on device. Required: " << max_heap_size / (1024 * 1024) << " MB, Available: " << free_mem / (1024 * 1024) << " MB" << std::endl;
+        return;
+    }
+    cudaDeviceSetLimit(cudaLimitMallocHeapSize, max_heap_size);
+    checkCUDAError("Heap size set");
+}
+
 #endif // __CUDA_UTILITIES_CU__
