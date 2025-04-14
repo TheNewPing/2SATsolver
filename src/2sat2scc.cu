@@ -251,3 +251,28 @@ struct TwoSat2SCC {
         return comp_array;
     }
 };
+
+void arrayify_sccs(TwoSat2SCC *sccs, int n, bool init, int** h_candidates, bool** h_infl_comp, int** h_comp) {
+    printf("building candidates...\n");
+    sccs->build_candidates(n, init);
+    printf("building candidates done.\n");
+
+    // Prepare data for kernel
+    printf("Preparing data for kernel...\n");
+    printf("candidates...\n");
+    *h_candidates = sccs->arrayify_candidates();
+    printf("candidates done.\n");
+
+    // print_vv(sccs->candidates);
+    // print_vv(sccs.infl_comp);
+
+    printf("infl_comp...\n");
+    *h_infl_comp = sccs->arrayify_infl_comp();
+    printf("infl_comp done.\n");
+    // print_array(h_infl_comp, n_comp * n_comp, n_comp);
+
+    printf("comp...\n");
+    *h_comp = sccs->arrayify_comp();
+    printf("comp done.\n");
+    printf("Preparing data for kernel done.\n");
+}
