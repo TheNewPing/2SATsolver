@@ -2,13 +2,17 @@
 #include <vector>
 #include <algorithm>
 #include <fstream>
+#include <numeric>
 
 #include "../include/literal.cu"
 #include "../include/cuda_error.cu"
 #include "../include/cuda_utilities.cu"
 
-__device__ __host__ void print_array(int* array, int length, int values_per_row) {
+__device__ __host__ void print_array(int* array, int length, int values_per_row, const char* row_prefix) {
     for (int i = 0; i < length; ++i) {
+        if (i % values_per_row == 0) {
+            printf("%s", row_prefix);
+        }
         printf("%d ", array[i]);
         if ((i + 1) % values_per_row == 0) {
             printf("\n");
@@ -18,8 +22,11 @@ __device__ __host__ void print_array(int* array, int length, int values_per_row)
         printf("\n");
     }
 }
-__device__ __host__ void print_array(bool* array, int length, int values_per_row) {
+__device__ __host__ void print_array(bool* array, int length, int values_per_row, const char* row_prefix) {
     for (int i = 0; i < length; ++i) {
+        if (i % values_per_row == 0) {
+            printf("%s", row_prefix);
+        }
         printf("%d ", array[i]);
         if ((i + 1) % values_per_row == 0) {
             printf("\n");
@@ -31,6 +38,11 @@ __device__ __host__ void print_array(bool* array, int length, int values_per_row
 }
 
 /*
+Runs 1 block per candidate solution.
+Each block loads the value of the j-th component of the candidate solution and its influence on the other components.
+Then, it propagates the influence of the j-th component to all other components.
+Repeats for all components of the candidate solution, starting from the last one.
+
 Args:
     n_comp: number of components.
     n_sol: number of candidate solutions.
@@ -40,7 +52,8 @@ Args:
     infl_comp: matrix of influence between components.
         each row contains the influence of the i-th component due to negated variables.
     comp: vertex component mapping.
-    sol_comp: matrix of solutions on components.
+    sol_comp: matrix of solutions on components, must be initialized with all values = true,
+        it will contain the results.
 */
 __global__ void kernel_solve_2SAT(int n_comp, int n_sol, int n_vars, int* candidates, bool* infl_comp, int* comp, bool* sol_comp) {
     __shared__ int curr_comp;
@@ -51,7 +64,7 @@ __global__ void kernel_solve_2SAT(int n_comp, int n_sol, int n_vars, int* candid
         int curr_sol = blockIdx.x + i;
         if (curr_sol >= n_sol) return;
         for (int j = n_comp-1; j >= 0; --j) {
-            // load in shared mem the i-th component of the current candidate solution
+            // load in shared mem the j-th component of the current candidate solution
             if (threadIdx.x == 0) {
                 curr_comp = candidates[curr_sol * n_comp + j];
                 sol_i = sol_comp + (curr_sol * n_comp);
@@ -59,7 +72,7 @@ __global__ void kernel_solve_2SAT(int n_comp, int n_sol, int n_vars, int* candid
                 val_i = sol_i[curr_comp];
             }
             __syncthreads();
-            // propagate the effect of the i-th component to all other components
+            // propagate the effect of the j-th component to all other components
             for (int k = 0; k < n_comp; k += blockDim.x) {
                 int comp_idx = threadIdx.x + k;
                 if (comp_idx >= n_comp) return;
@@ -100,12 +113,12 @@ void compute_sccs_solutions(int max_threads, int max_blocks, int n_comp, int n_s
     HANDLE_ERROR(cudaMalloc((void**)d_sol_comp, sol_comp_size));
     HANDLE_ERROR(cudaMemcpy(*d_sol_comp, h_sol_comp, sol_comp_size, cudaMemcpyHostToDevice));
 
-    printf("Computing sccs solutions...\n");
-    printf("n_blocks: %d, threads_per_block: %d\n", n_blocks, threads_per_block);
+    // printf("Computing sccs solutions...\n");
+    // printf("n_blocks: %d, threads_per_block: %d\n", n_blocks, threads_per_block);
     kernel_solve_2SAT<<<n_blocks, threads_per_block>>>(n_comp, n_sol, n_vars, d_candidates, d_infl_comp, *d_comp, *d_sol_comp);
     cudaDeviceSynchronize();
     checkCUDAError("computed sccs solutions");
-    printf("Computing sccs solutions done.\n");
+    // printf("Computing sccs solutions done.\n");
 
     // Copy results back to host
     HANDLE_ERROR(cudaMemcpy(h_sol_comp, *d_sol_comp, n_sol * n_comp * sizeof(bool), cudaMemcpyDeviceToHost));
@@ -121,6 +134,21 @@ void compute_sccs_solutions(int max_threads, int max_blocks, int n_comp, int n_s
     free(h_comp);
 }
 
+
+/*
+Runs 1 block per variable.
+Each block load the component that contains its variable.
+Then, for each candidate solution, it copies the value of the component to the variable.
+
+Args:
+    n_comp: number of components.
+    n_sol: number of candidate solutions.
+    n_vars: number of variables.
+    comp: vertex component mapping.
+    sol_comp: matrix of solutions on components, it should contain the results already computed.
+    sol_var: matrix of solutions on variables, must be initialized with all values = false,
+        it will contain the results.
+*/
 __global__ void kernel_comp_to_var(int n_comp, int n_vars, int n_sol, int* comp, bool* sol_comp, bool* sol_var) {
     __shared__ int var_comp;
 
@@ -158,11 +186,11 @@ void solutions_sccs_to_vars(int max_threads, int max_blocks, int n_comp, int n_s
     bool* d_sol_var;
     HANDLE_ERROR(cudaMalloc((void**)&d_sol_var, sol_var_size));
 
-    printf("Converting sccs solutions to variable solutions...\n");
+    // printf("Converting sccs solutions to variable solutions...\n");
     kernel_comp_to_var<<<n_blocks, threads_per_block>>>(n_comp, n_vars, n_sol, d_comp, d_sol_comp, d_sol_var);
     cudaDeviceSynchronize();
     checkCUDAError("converted sccs solutions to variable solutions");
-    printf("Converting sccs solutions to variable solutions done.\n");
+    // printf("Converting sccs solutions to variable solutions done.\n");
 
     // Copy results back to host
     HANDLE_ERROR(cudaMemcpy(*h_sol_var, d_sol_var, n_sol * n_vars * sizeof(bool), cudaMemcpyDeviceToHost));
@@ -174,6 +202,22 @@ void solutions_sccs_to_vars(int max_threads, int max_blocks, int n_comp, int n_s
     HANDLE_ERROR(cudaFree(d_sol_var));
 }
 
+
+/*
+Runs 1 block per candidate solution pair.
+Each block identifies the i-th and j-th candidate solutions, then initializes a counter to 0.
+Each thread compares the values of 1 variable of the i-th and j-th candidate solutions.
+If the values are different, it increments the counter.
+When all threads finish, the block checks if the counter is greater than or equal to min_dist.
+
+Args:
+    n_sol: number of candidate solutions.
+    n_vars: number of variables.
+    sol_var: matrix of solutions on variables, it should contain the results already computed.
+    sol_var_min_dist: matrix of compatibility between solutions, it should be initialized with all values = false,
+        it will contain the results.
+    min_dist: minimum hamming distance between two solutions to be considered compatible.
+*/
 __global__ void kernel_filter_min_dist(int n_sol, int n_vars, bool* sol_var, bool* sol_var_min_dist, int min_dist) {
     __shared__ int counter;
     
@@ -233,11 +277,11 @@ void solutions_hamming_dist(int max_threads, int max_blocks, int n_sol, int n_va
     bool* d_sol_var_min_dist;
     HANDLE_ERROR(cudaMalloc((void**)&d_sol_var_min_dist, sol_var_min_dist_size));
 
-    printf("Computing compatibility between solutions...\n");
+    // printf("Computing compatibility between solutions...\n");
     kernel_filter_min_dist<<<n_blocks, threads_per_block>>>(n_sol_var_to_filter, n_vars, d_sol_var_to_filter, d_sol_var_min_dist, min_dist);
     cudaDeviceSynchronize();
     checkCUDAError("filtered sccs solutions by min dist");
-    printf("Computing compatibility between solutions done.\n");
+    // printf("Computing compatibility between solutions done.\n");
 
     // Copy results back to host
     *h_sol_var_min_dist = (bool*)malloc(n_sol_var_to_filter * n_sol_var_to_filter * sizeof(bool));
@@ -252,9 +296,26 @@ void solutions_hamming_dist(int max_threads, int max_blocks, int n_sol, int n_va
     free(h_sol_var_to_filter);
 }
 
+
+/*
+Serial solution.
+Builds a vector of indices of the candidate solutions already inserted in the output pool. The indices refer to the h_sol_var_min_dist matrix.
+Then, for each candidate solution in the new pool, it checks if it is compatible with all the solutions already inserted in the output pool.
+If it is compatible, it is inserted in the output pool.
+
+Args:
+    init: true if this is the first iteration, false otherwise.
+    n_sol: number of candidate solutions.
+    n_vars: number of variables.
+    n: maximum number of solutions to output.
+    h_sol_var: matrix of new solutions on variables, it should contain the results already computed.
+    h_sol_var_min_dist: matrix of compatibility between solutions, contains the compatibility between all candidates in the output pool and in the new pool.
+    out_results: matrix of final results.
+    n_out_results: number of candidate solutions already in out_results.
+*/
 int insert_new_solution(bool init, int n_sol, int n_vars, int n, bool* h_sol_var, bool* h_sol_var_min_dist,
     bool* out_results, int n_out_results) {
-    printf("Building final results...\n");
+    // printf("Building final results...\n");
     int n_sol_var_to_filter = n_sol + n_out_results;
     std::vector<int> inserted_solutions(n_out_results);
     std::iota(inserted_solutions.begin(), inserted_solutions.end(), 0);
@@ -267,24 +328,24 @@ int insert_new_solution(bool init, int n_sol, int n_vars, int n, bool* h_sol_var
 
     // insert the rest of the results
     for (int i = inserted_solutions.size(); i < n_sol_var_to_filter && inserted_solutions.size() < n; ++i) {
-    bool valid = true;
-    for (int val : inserted_solutions) {
-    if (!h_sol_var_min_dist[i * n_sol_var_to_filter + val]) {
-    valid = false;
-    break;
-    }
-    }
-    if (valid) {
-    memcpy(out_results + inserted_solutions.size() * n_vars,
-    h_sol_var + (i-n_out_results) * n_vars, n_vars * sizeof(bool));
-    inserted_solutions.push_back(i);
-    }
+        bool valid = true;
+        for (int val : inserted_solutions) {
+            if (!h_sol_var_min_dist[i * n_sol_var_to_filter + val]) {
+                valid = false;
+                break;
+            }
+        }
+        if (valid) {
+            memcpy(out_results + inserted_solutions.size() * n_vars,
+            h_sol_var + (i-n_out_results) * n_vars, n_vars * sizeof(bool));
+            inserted_solutions.push_back(i);
+        }
     }
 
     // Free host memory
     free(h_sol_var);
     free(h_sol_var_min_dist);
 
-    printf("Building final results done.\n");
+    // printf("Building final results done.\n");
     return inserted_solutions.size();
 }

@@ -10,12 +10,12 @@ void parallel_usage(std::string filename, int n, int min_dist) {
     int n_vars = sccs.n_vars;
     int n_vertices = sccs.n_vertices;
 
-    printf("building SCC...\n");
+    // printf("building SCC...\n");
     if (!sccs.build_SCC()) {
         printf("No solution found.\n");
         return;
     }
-    printf("building SCC done.\n");
+    // printf("building SCC done.\n");
     // printf("sccs.comp:\n");
     // for (const auto& c : sccs.comp) {
         // printf("%d ", c);
@@ -68,7 +68,7 @@ void parallel_usage(std::string filename, int n, int min_dist) {
 
     // print output
     printf("Parallel solutions:\n");
-    print_array(out_results, n_out_results * n_vars, n_vars);
+    print_array(out_results, n_out_results * n_vars, n_vars, "sol: ");
 
 }
 
@@ -79,6 +79,7 @@ void serial_usage(std::string filename, int n, int min_dist) {
         return;
     }
     solver_ser.solve_from_all_nodes(n, min_dist);
+    std::cout << "Serial solutions:" << std::endl;
     for (const auto& sol : solver_ser.solutions) {
         std::cout << "solution: ";
         for (bool val : sol) {

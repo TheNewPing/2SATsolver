@@ -183,7 +183,7 @@ struct TwoSat2SCC {
     }
 
     std::vector<std::vector<int>> _build_candidates_rec(const std::unordered_map<int, std::unordered_set<int>>& adj_comp_tr, int max_solutions) {
-        print_umap(adj_comp_tr);
+        // print_umap(adj_comp_tr);
         std::vector<std::vector<int>> out;
         for (auto pair : adj_comp_tr) {
             if (pair.second.empty()) {
@@ -253,26 +253,26 @@ struct TwoSat2SCC {
 };
 
 void arrayify_sccs(TwoSat2SCC *sccs, int n, bool init, int** h_candidates, bool** h_infl_comp, int** h_comp) {
-    printf("building candidates...\n");
+    // printf("building candidates...\n");
     sccs->build_candidates(n, init);
-    printf("building candidates done.\n");
+    // printf("building candidates done.\n");
 
     // Prepare data for kernel
-    printf("Preparing data for kernel...\n");
-    printf("candidates...\n");
+    // printf("Preparing data for kernel...\n");
+    // printf("candidates...\n");
     *h_candidates = sccs->arrayify_candidates();
-    printf("candidates done.\n");
+    // printf("candidates done.\n");
 
     // print_vv(sccs->candidates);
     // print_vv(sccs.infl_comp);
 
-    printf("infl_comp...\n");
+    // printf("infl_comp...\n");
     *h_infl_comp = sccs->arrayify_infl_comp();
-    printf("infl_comp done.\n");
+    // printf("infl_comp done.\n");
     // print_array(h_infl_comp, n_comp * n_comp, n_comp);
 
-    printf("comp...\n");
+    // printf("comp...\n");
     *h_comp = sccs->arrayify_comp();
-    printf("comp done.\n");
-    printf("Preparing data for kernel done.\n");
+    // printf("comp done.\n");
+    // printf("Preparing data for kernel done.\n");
 }
