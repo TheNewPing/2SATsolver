@@ -61,8 +61,9 @@ Args:
     n_vars: number of variables.
     candidates: matrix of candidate solutions.
         each row contains a valid permutation of the sccs.
-    infl_comp: matrix of influence between components.
-        each row contains the influence of the i-th component due to negated variables.
+    infl_comp: list of influence between components.
+        each list contains the influence of the i-th component due to negated variables.
+    infl_comp_end_idx: list of end indices of the influence lists.
     comp: vertex component mapping.
     sol_comp: matrix of solutions on components, must be initialized with all values = true,
         it will contain the results.
