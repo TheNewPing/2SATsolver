@@ -31,9 +31,15 @@ void parallel_usage(std::string filename, int n, int min_dist) {
         printf("Current number of solutions: %d\n", n_out_results);
 
         int *h_candidates;
-        bool *h_infl_comp;
+        int* h_infl_comp;
+        int* h_infl_comp_end_idx;
         int *h_comp;
-        arrayify_sccs(&sccs, n, init, &h_candidates, &h_infl_comp, &h_comp);
+        size_t infl_comp_bytes = arrayify_sccs(&sccs, n, init, &h_candidates, &h_comp,
+                                               &h_infl_comp, &h_infl_comp_end_idx);
+        // printf("vv.\n");
+        // print_vv(sccs.infl_comp);
+        // printf("^^\n");
+        // print_array(h_infl_comp, sccs.infl_comp.size(), h_infl_comp_end_idx);
         int n_sol = sccs.candidates.size();
         int n_comp = sccs.infl_comp.size();
         // printf("n_sol: %d, n_comp: %d\n", n_sol, n_comp);
@@ -46,7 +52,7 @@ void parallel_usage(std::string filename, int n, int min_dist) {
         int *d_comp;
         bool *d_sol_comp;
         compute_sccs_solutions(max_threads, max_blocks, n_comp, n_sol, n_vars, n_vertices,
-                               h_candidates, h_infl_comp, h_comp,
+                               h_candidates, h_infl_comp, h_infl_comp_end_idx, infl_comp_bytes, h_comp,
                                &d_comp, &d_sol_comp);
 
         // ----------- Transfer sccs solutions to variable solutions ----------- 
@@ -91,26 +97,37 @@ void serial_usage(std::string filename, int n, int min_dist) {
 
 int main(int argc, char** argv) {
     if (argc < 4) {
-        std::cout << "Usage: " << argv[0] << " <filename> <number of solutions> <min hamming dist>" << std::endl;
+        std::cout << "Usage: " << argv[0] << " [-c] <filename> <number of solutions> <min hamming dist>" << std::endl;
         return 1;
     }
-    const char* filename = argv[1];
-    int n = std::stoi(argv[2]);
-    int min_dist = std::stoi(argv[3]);
 
-    auto start_ser = std::chrono::high_resolution_clock::now();
-    serial_usage(filename, n, min_dist);
-    auto end_ser = std::chrono::high_resolution_clock::now();
-    auto ms_ser = std::chrono::duration_cast<std::chrono::milliseconds>(end_ser - start_ser);
-    
+    bool run_serial = false;
+    int arg_offset = 0;
+
+    if (std::string(argv[1]) == "-c") {
+        run_serial = true;
+        arg_offset = 1;
+    }
+
+    const char* filename = argv[1 + arg_offset];
+    int n = std::stoi(argv[2 + arg_offset]);
+    int min_dist = std::stoi(argv[3 + arg_offset]);
+
     auto start_par = std::chrono::high_resolution_clock::now();
     parallel_usage(filename, n, min_dist);
     auto end_par = std::chrono::high_resolution_clock::now();
     auto ms_par = std::chrono::duration_cast<std::chrono::milliseconds>(end_par - start_par);
-    
-    std::cout << "Serial time: " << ms_ser.count() << " ms" << std::endl;
+
     std::cout << "Parallel time: " << ms_par.count() << " ms" << std::endl;
-    std::cout << "Speedup: " << (double)ms_ser.count() / ms_par.count() << "x" << std::endl;
+
+    if (run_serial) {
+        auto start_ser = std::chrono::high_resolution_clock::now();
+        serial_usage(filename, n, min_dist);
+        auto end_ser = std::chrono::high_resolution_clock::now();
+        auto ms_ser = std::chrono::duration_cast<std::chrono::milliseconds>(end_ser - start_ser);
+        std::cout << "Serial time: " << ms_ser.count() << " ms" << std::endl;
+        std::cout << "Speedup: " << (double)ms_ser.count() / ms_par.count() << "x" << std::endl;
+    }
 
     return 0;
 }

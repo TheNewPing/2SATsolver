@@ -22,7 +22,7 @@ __device__ __host__ void print_array(int* array, int length, int values_per_row,
         printf("\n");
     }
 }
-__device__ __host__ void print_array(bool* array, int length, int values_per_row, const char* row_prefix) {
+__device__ __host__ void print_array(bool* array, int length, int values_per_row, const char* row_prefix = "") {
     for (int i = 0; i < length; ++i) {
         if (i % values_per_row == 0) {
             printf("%s", row_prefix);
@@ -34,6 +34,18 @@ __device__ __host__ void print_array(bool* array, int length, int values_per_row
     }
     if (length % values_per_row != 0) {
         printf("\n");
+    }
+}
+
+__device__ __host__ void print_array(int* array, int num_rows, int* row_end_indices, const char* row_prefix = "") {
+    int start_index = 0;
+    for (int row = 0; row < num_rows; ++row) {
+        printf("%s", row_prefix);
+        for (int index = start_index; index < row_end_indices[row]; ++index) {
+            printf("%d ", array[index]);
+        }
+        printf("\n");
+        start_index = row_end_indices[row];
     }
 }
 
@@ -55,10 +67,11 @@ Args:
     sol_comp: matrix of solutions on components, must be initialized with all values = true,
         it will contain the results.
 */
-__global__ void kernel_solve_2SAT(int n_comp, int n_sol, int n_vars, int* candidates, bool* infl_comp, int* comp, bool* sol_comp) {
+__global__ void kernel_solve_2SAT(int n_comp, int n_sol, int n_vars, int* candidates, int* comp, int* infl_comp, int* infl_comp_end_idx, bool* sol_comp) {
     __shared__ int curr_comp;
     __shared__ bool val_i;
-    __shared__ bool* infl_i;
+    __shared__ int* infl_i;
+    __shared__ int infl_i_size;
     __shared__ bool* sol_i;
     for (int i = 0; i < n_sol; i += gridDim.x) {
         int curr_sol = blockIdx.x + i;
@@ -68,18 +81,18 @@ __global__ void kernel_solve_2SAT(int n_comp, int n_sol, int n_vars, int* candid
             if (threadIdx.x == 0) {
                 curr_comp = candidates[curr_sol * n_comp + j];
                 sol_i = sol_comp + (curr_sol * n_comp);
-                infl_i = infl_comp + (curr_comp * n_comp);
+                int offset = curr_comp == 0 ? 0 : infl_comp_end_idx[curr_comp - 1];
+                infl_i_size = infl_comp_end_idx[curr_comp] - offset;
+                infl_i = infl_comp + offset;
                 val_i = sol_i[curr_comp];
             }
             __syncthreads();
             // propagate the effect of the j-th component to all other components
-            for (int k = 0; k < n_comp; k += blockDim.x) {
-                int comp_idx = threadIdx.x + k;
-                if (comp_idx >= n_comp) return;
-                if (comp_idx != curr_comp) {
-                    bool infl_j = infl_i[comp_idx];
-                    sol_i[comp_idx] = (infl_j && !val_i) || (!infl_j && sol_i[comp_idx]);
-                }
+            for (int k = 0; k < infl_i_size; k += blockDim.x) {
+                int infl_idx = threadIdx.x + k;
+                if (infl_idx >= infl_i_size) return;
+                int target_comp = infl_i[infl_idx];
+                sol_i[target_comp] = !val_i;
             }
             __syncthreads();
         }
@@ -87,7 +100,7 @@ __global__ void kernel_solve_2SAT(int n_comp, int n_sol, int n_vars, int* candid
 }
 
 void compute_sccs_solutions(int max_threads, int max_blocks, int n_comp, int n_sol, int n_vars, int n_vertices,
-                            int* h_candidates, bool* h_infl_comp, int* h_comp,
+                            int* h_candidates, int* h_infl_comp, int* h_infl_comp_end_idx, size_t infl_comp_bytes, int* h_comp,
                             int** d_comp, bool** d_sol_comp) {
     int threads_per_block = std::min(max_threads, n_comp);
     int n_blocks = std::min(max_blocks, n_sol);
@@ -96,18 +109,21 @@ void compute_sccs_solutions(int max_threads, int max_blocks, int n_comp, int n_s
     std::fill(h_sol_comp, h_sol_comp + n_sol * n_comp, true);
     
     size_t candidates_size = n_sol * n_comp * sizeof(int);
-    size_t infl_comp_size = n_comp * n_comp * sizeof(bool);
     size_t comp_size = n_vertices * sizeof(int);
     size_t sol_comp_size = n_sol * n_comp * sizeof(bool);
-    size_t max_heap_size = candidates_size + infl_comp_size + comp_size + sol_comp_size;
+    size_t infl_comp_sizes_size = n_comp * sizeof(int);
+    size_t max_heap_size = candidates_size + infl_comp_bytes + infl_comp_sizes_size + comp_size + sol_comp_size;
     set_heap_size(max_heap_size);
 
     int* d_candidates;
-    bool* d_infl_comp;
+    int* d_infl_comp;
+    int* d_infl_comp_sizes;
     HANDLE_ERROR(cudaMalloc((void**)&d_candidates, candidates_size));
     HANDLE_ERROR(cudaMemcpy(d_candidates, h_candidates, candidates_size, cudaMemcpyHostToDevice));
-    HANDLE_ERROR(cudaMalloc((void**)&d_infl_comp, infl_comp_size));
-    HANDLE_ERROR(cudaMemcpy(d_infl_comp, h_infl_comp, infl_comp_size, cudaMemcpyHostToDevice));
+    HANDLE_ERROR(cudaMalloc((void**)&d_infl_comp, infl_comp_bytes));
+    HANDLE_ERROR(cudaMemcpy(d_infl_comp, h_infl_comp, infl_comp_bytes, cudaMemcpyHostToDevice));
+    HANDLE_ERROR(cudaMalloc((void**)&d_infl_comp_sizes, infl_comp_sizes_size));
+    HANDLE_ERROR(cudaMemcpy(d_infl_comp_sizes, h_infl_comp_end_idx, infl_comp_sizes_size, cudaMemcpyHostToDevice));
     HANDLE_ERROR(cudaMalloc((void**)d_comp, comp_size));
     HANDLE_ERROR(cudaMemcpy(*d_comp, h_comp, comp_size, cudaMemcpyHostToDevice));
     HANDLE_ERROR(cudaMalloc((void**)d_sol_comp, sol_comp_size));
@@ -115,7 +131,7 @@ void compute_sccs_solutions(int max_threads, int max_blocks, int n_comp, int n_s
 
     // printf("Computing sccs solutions...\n");
     // printf("n_blocks: %d, threads_per_block: %d\n", n_blocks, threads_per_block);
-    kernel_solve_2SAT<<<n_blocks, threads_per_block>>>(n_comp, n_sol, n_vars, d_candidates, d_infl_comp, *d_comp, *d_sol_comp);
+    kernel_solve_2SAT<<<n_blocks, threads_per_block>>>(n_comp, n_sol, n_vars, d_candidates, *d_comp, d_infl_comp, d_infl_comp_sizes, *d_sol_comp);
     cudaDeviceSynchronize();
     checkCUDAError("computed sccs solutions");
     // printf("Computing sccs solutions done.\n");

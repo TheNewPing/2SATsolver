@@ -226,19 +226,20 @@ struct TwoSat2SCC {
         return candidates_array;
     }
 
-    bool* arrayify_infl_comp() {
-        bool* infl_comp_array = (bool*)malloc(infl_comp.size() * infl_comp.size() * sizeof(bool));
-        if (!infl_comp_array) {
-            std::cerr << "Memory allocation failed for infl_comp_array." << std::endl;
-            return nullptr;
+    size_t arrayify_infl_comp(int** infl_comp_out, int** end_indexes) {
+        size_t tot_size = 0;
+        for (auto val : infl_comp) {
+            tot_size += val.size() * sizeof(int);
         }
-        std::fill(infl_comp_array, infl_comp_array + infl_comp.size() * infl_comp.size(), false);
+        *infl_comp_out = (int*)malloc(tot_size);
+        *end_indexes = (int*)malloc(infl_comp.size() * sizeof(int));
+        int offset = 0;
         for (size_t i = 0; i < infl_comp.size(); ++i) {
-            for (int val : infl_comp[i]) {
-                infl_comp_array[i * infl_comp.size() + val] = true;
-            }
+            std::copy(infl_comp[i].begin(), infl_comp[i].end(), (*infl_comp_out) + offset);
+            offset += infl_comp[i].size();
+            (*end_indexes)[i] = offset;
         }
-        return infl_comp_array;
+        return tot_size;
     }
 
     int* arrayify_comp() {
@@ -252,7 +253,7 @@ struct TwoSat2SCC {
     }
 };
 
-void arrayify_sccs(TwoSat2SCC *sccs, int n, bool init, int** h_candidates, bool** h_infl_comp, int** h_comp) {
+size_t arrayify_sccs(TwoSat2SCC *sccs, int n, bool init, int** h_candidates, int** h_comp, int** h_infl_comp, int** h_infl_comp_end_idx) {
     // printf("building candidates...\n");
     sccs->build_candidates(n, init);
     // printf("building candidates done.\n");
@@ -262,17 +263,16 @@ void arrayify_sccs(TwoSat2SCC *sccs, int n, bool init, int** h_candidates, bool*
     // printf("candidates...\n");
     *h_candidates = sccs->arrayify_candidates();
     // printf("candidates done.\n");
-
     // print_vv(sccs->candidates);
-    // print_vv(sccs.infl_comp);
-
-    // printf("infl_comp...\n");
-    *h_infl_comp = sccs->arrayify_infl_comp();
-    // printf("infl_comp done.\n");
-    // print_array(h_infl_comp, n_comp * n_comp, n_comp);
 
     // printf("comp...\n");
     *h_comp = sccs->arrayify_comp();
     // printf("comp done.\n");
+
+    // print_vv(sccs.infl_comp);
+    // printf("infl_comp...\n");
+    return sccs->arrayify_infl_comp(h_infl_comp, h_infl_comp_end_idx);
+    // printf("infl_comp done.\n");
+    // print_array(h_infl_comp, n_comp * n_comp, n_comp);
     // printf("Preparing data for kernel done.\n");
 }
