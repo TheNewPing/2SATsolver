@@ -8,6 +8,7 @@
 #include <random>
 
 #include "../include/literal.cu"
+#include "../include/cuda_utilities.cu"
 
 void print_vv(const std::vector<std::vector<int>>& vv) {
     std::cout << "vv:" << std::endl;
@@ -38,6 +39,7 @@ struct TwoSat2SCC {
     std::unordered_map<int, std::unordered_set<int>> adj_comp_t;
     std::vector<bool> used;
     std::vector<int> order, comp;
+    std::vector<Literal> vars;
 
     TwoSat2SCC(int _n_vars) : n_vars(_n_vars), n_vertices(2 * n_vars), adj(n_vertices), adj_t(n_vertices), used(n_vertices), order(), comp(n_vertices, -1) {
         order.reserve(n_vertices);
@@ -45,8 +47,8 @@ struct TwoSat2SCC {
 
     TwoSat2SCC(const std::string& filepath) {
         std::ifstream file(filepath, std::ios::in);
-        std::vector<Literal> vars;
         std::string var1, var2;
+        vars.clear();
         if (!file.is_open()) {
             throw std::runtime_error("Could not open file: " + filepath);
         }
@@ -180,38 +182,6 @@ struct TwoSat2SCC {
                 std::swap(c[i], c[j]);
             }
         }
-    }
-
-    std::vector<std::vector<int>> _build_candidates_rec(const std::unordered_map<int, std::unordered_set<int>>& adj_comp_tr, int max_solutions) {
-        // print_umap(adj_comp_tr);
-        std::vector<std::vector<int>> out;
-        for (auto pair : adj_comp_tr) {
-            if (pair.second.empty()) {
-                // righe dovbrebbero essere named?
-                int val = pair.first;
-                std::unordered_map<int, std::unordered_set<int>> adj_comp_t_copy = adj_comp_tr;
-                // Remove the element at the same index from adj_comp_t_copy
-                adj_comp_t_copy.erase(val);
-                for (auto& vec : adj_comp_t_copy) {
-                    vec.second.erase(val);
-                }
-                std::vector<std::vector<int>> candidates_rec;
-                if (adj_comp_t_copy.size() > 1) {
-                    candidates_rec = _build_candidates_rec(adj_comp_t_copy, max_solutions);
-                } else {
-                    candidates_rec.push_back({adj_comp_tr.begin()->first});
-                }
-                for (const auto& candidate : candidates_rec) {
-                    std::vector<int> new_candidate = {val};
-                    new_candidate.insert(new_candidate.end(), candidate.begin(), candidate.end());
-                    out.push_back(new_candidate);
-                    if (out.size() >= max_solutions) {
-                        return out;
-                    }
-                }
-            }
-        }
-        return out;
     }
 
     int* arrayify_candidates() {

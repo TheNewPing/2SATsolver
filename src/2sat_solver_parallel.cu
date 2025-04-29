@@ -8,47 +8,6 @@
 #include "../include/cuda_error.cu"
 #include "../include/cuda_utilities.cu"
 
-__device__ __host__ void print_array(int* array, int length, int values_per_row, const char* row_prefix) {
-    for (int i = 0; i < length; ++i) {
-        if (i % values_per_row == 0) {
-            printf("%s", row_prefix);
-        }
-        printf("%d ", array[i]);
-        if ((i + 1) % values_per_row == 0) {
-            printf("\n");
-        }
-    }
-    if (length % values_per_row != 0) {
-        printf("\n");
-    }
-}
-__device__ __host__ void print_array(bool* array, int length, int values_per_row, const char* row_prefix = "") {
-    for (int i = 0; i < length; ++i) {
-        if (i % values_per_row == 0) {
-            printf("%s", row_prefix);
-        }
-        printf("%d ", array[i]);
-        if ((i + 1) % values_per_row == 0) {
-            printf("\n");
-        }
-    }
-    if (length % values_per_row != 0) {
-        printf("\n");
-    }
-}
-
-__device__ __host__ void print_array(int* array, int num_rows, int* row_end_indices, const char* row_prefix = "") {
-    int start_index = 0;
-    for (int row = 0; row < num_rows; ++row) {
-        printf("%s", row_prefix);
-        for (int index = start_index; index < row_end_indices[row]; ++index) {
-            printf("%d ", array[index]);
-        }
-        printf("\n");
-        start_index = row_end_indices[row];
-    }
-}
-
 /*
 Runs 1 block per candidate solution.
 Each block loads the value of the j-th component of the candidate solution and its influence on the other components.
@@ -76,10 +35,11 @@ __global__ void kernel_solve_2SAT(int n_comp, int n_sol, int n_vars, int* candid
     __shared__ bool* sol_i;
     for (int i = 0; i < n_sol; i += gridDim.x) {
         int curr_sol = blockIdx.x + i;
-        if (curr_sol >= n_sol) return;
+        if (curr_sol >= n_sol) return; //rimuovi con n_sol multiplo di blocks
         for (int j = n_comp-1; j >= 0; --j) {
             // load in shared mem the j-th component of the current candidate solution
             if (threadIdx.x == 0) {
+                // separa in altro kernel
                 curr_comp = candidates[curr_sol * n_comp + j];
                 sol_i = sol_comp + (curr_sol * n_comp);
                 int offset = curr_comp == 0 ? 0 : infl_comp_end_idx[curr_comp - 1];
@@ -91,7 +51,7 @@ __global__ void kernel_solve_2SAT(int n_comp, int n_sol, int n_vars, int* candid
             // propagate the effect of the j-th component to all other components
             for (int k = 0; k < infl_i_size; k += blockDim.x) {
                 int infl_idx = threadIdx.x + k;
-                if (infl_idx >= infl_i_size) return;
+                if (infl_idx >= infl_i_size) break;
                 int target_comp = infl_i[infl_idx];
                 sol_i[target_comp] = !val_i;
             }

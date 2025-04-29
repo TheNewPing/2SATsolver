@@ -15,6 +15,7 @@ struct TwoSatSolverSerial {
     std::vector<int> order, comp;
     std::vector<bool> assignment;
     std::unordered_set<std::vector<bool>> solutions;
+    std::vector<Literal> vars;
 
     TwoSatSolverSerial(int _n_vars) : n_vars(_n_vars), n_vertices(2 * n_vars), adj(n_vertices), adj_t(n_vertices), used(n_vertices), order(), comp(n_vertices, -1), assignment(n_vars) {
         order.reserve(n_vertices);
@@ -22,7 +23,8 @@ struct TwoSatSolverSerial {
 
     TwoSatSolverSerial(const std::string& filepath) {
         std::ifstream file(filepath);
-        std::vector<Literal> vars;
+        vars.clear();
+       
         std::string var1, var2;
         if (!file.is_open()) {
             throw std::runtime_error("Could not open file: " + filepath);

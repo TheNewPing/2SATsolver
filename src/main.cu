@@ -76,6 +76,12 @@ void parallel_usage(std::string filename, int n, int min_dist) {
     printf("Parallel solutions:\n");
     print_array(out_results, n_out_results * n_vars, n_vars, "sol: ");
 
+    // verify output
+    if (verify_solutions(out_results, n_out_results, sccs.vars, n_vars)) {
+        printf("All solutions are valid.\n");
+    } else {
+        printf("Some solutions are invalid.\n");
+    }
 }
 
 void serial_usage(std::string filename, int n, int min_dist) {
@@ -87,11 +93,16 @@ void serial_usage(std::string filename, int n, int min_dist) {
     solver_ser.solve_from_all_nodes(n, min_dist);
     std::cout << "Serial solutions:" << std::endl;
     for (const auto& sol : solver_ser.solutions) {
-        std::cout << "solution: ";
+        std::cout << "sol: ";
         for (bool val : sol) {
             std::cout << val << " ";
         }
         std::cout << std::endl;
+    }
+    if (verify_solutions(solver_ser.solutions, solver_ser.vars)) {
+        std::cout << "All solutions are valid." << std::endl;
+    } else {
+        std::cout << "Some solutions are invalid." << std::endl;
     }
 }
 
@@ -121,6 +132,7 @@ int main(int argc, char** argv) {
     std::cout << "Parallel time: " << ms_par.count() << " ms" << std::endl;
 
     if (run_serial) {
+        std::cout << std::endl;
         auto start_ser = std::chrono::high_resolution_clock::now();
         serial_usage(filename, n, min_dist);
         auto end_ser = std::chrono::high_resolution_clock::now();
