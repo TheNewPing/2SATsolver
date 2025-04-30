@@ -134,7 +134,7 @@ __global__ void kernel_comp_to_var(int n_comp, int n_vars, int n_sol, int* comp,
         if (curr_var >= n_vars) return;
         // load in shared mem the component of the current variable
         if (threadIdx.x == 0) {
-            var_comp = comp[curr_var];
+            var_comp = comp[curr_var * 2];
         }
         __syncthreads();
         for (int j = 0; j < n_sol; j += blockDim.x) {

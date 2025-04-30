@@ -5,7 +5,7 @@
 #include "2sat_solver_parallel.cu"
 #include "2sat_solver_serial.cu"
 
-void parallel_usage(std::string filename, int n, int min_dist) {
+int parallel_usage(std::string filename, int n, int min_dist) {
     TwoSat2SCC sccs = TwoSat2SCC(filename);
     int n_vars = sccs.n_vars;
     int n_vertices = sccs.n_vertices;
@@ -13,7 +13,7 @@ void parallel_usage(std::string filename, int n, int min_dist) {
     // printf("building SCC...\n");
     if (!sccs.build_SCC()) {
         printf("No solution found.\n");
-        return;
+        return -1;
     }
     // printf("building SCC done.\n");
     // printf("sccs.comp:\n");
@@ -70,6 +70,8 @@ void parallel_usage(std::string filename, int n, int min_dist) {
                                             out_results, n_out_results);
 
         init = false;
+        // printf("PARTIAL solutions:\n");
+        // print_array(out_results, n_out_results * n_vars, n_vars, "sol: ");
     }
 
     // print output
@@ -79,16 +81,18 @@ void parallel_usage(std::string filename, int n, int min_dist) {
     // verify output
     if (verify_solutions(out_results, n_out_results, sccs.vars, n_vars)) {
         printf("All solutions are valid.\n");
+        return n_out_results;
     } else {
         printf("Some solutions are invalid.\n");
+        return -1;
     }
 }
 
-void serial_usage(std::string filename, int n, int min_dist) {
+int serial_usage(std::string filename, int n, int min_dist) {
     TwoSatSolverSerial solver_ser = TwoSatSolverSerial(filename);
     if (!solver_ser.solve_2SAT()) {
         std::cout << "No solution" << std::endl;
-        return;
+        return -1;
     }
     solver_ser.solve_from_all_nodes(n, min_dist);
     std::cout << "Serial solutions:" << std::endl;
@@ -101,8 +105,10 @@ void serial_usage(std::string filename, int n, int min_dist) {
     }
     if (verify_solutions(solver_ser.solutions, solver_ser.vars)) {
         std::cout << "All solutions are valid." << std::endl;
+        return solver_ser.solutions.size();
     } else {
         std::cout << "Some solutions are invalid." << std::endl;
+        return -1;
     }
 }
 
@@ -125,7 +131,7 @@ int main(int argc, char** argv) {
     int min_dist = std::stoi(argv[3 + arg_offset]);
 
     auto start_par = std::chrono::high_resolution_clock::now();
-    parallel_usage(filename, n, min_dist);
+    int par_n_sol = parallel_usage(filename, n, min_dist);
     auto end_par = std::chrono::high_resolution_clock::now();
     auto ms_par = std::chrono::duration_cast<std::chrono::milliseconds>(end_par - start_par);
 
@@ -134,11 +140,12 @@ int main(int argc, char** argv) {
     if (run_serial) {
         std::cout << std::endl;
         auto start_ser = std::chrono::high_resolution_clock::now();
-        serial_usage(filename, n, min_dist);
+        int ser_n_sol = serial_usage(filename, n, min_dist);
         auto end_ser = std::chrono::high_resolution_clock::now();
         auto ms_ser = std::chrono::duration_cast<std::chrono::milliseconds>(end_ser - start_ser);
         std::cout << "Serial time: " << ms_ser.count() << " ms" << std::endl;
-        std::cout << "Speedup: " << (double)ms_ser.count() / ms_par.count() << "x" << std::endl;
+        std::cout << std::endl << "Speedup: " << (double)ms_ser.count() / ms_par.count() << "x" << std::endl;
+        std::cout << "Solutions amount difference: " << par_n_sol - ser_n_sol << std::endl;
     }
 
     return 0;

@@ -5,7 +5,9 @@
 #include <iostream>
 #include <vector>
 #include <unordered_set>
-#include "./cuda_error.cu"    
+
+#include "./cuda_error.cu"
+#include "./literal.cu"
 
 cudaDeviceProp get_device_prop(int i) {
     cudaDeviceProp prop;
@@ -106,8 +108,9 @@ bool verify_solutions(bool* out_results, int n_out_results, std::vector<Literal>
             bool val1 = out_results[i * n_vars + var1] == sign1;
             bool val2 = out_results[i * n_vars + var2] == sign2;
             if (!(val1 || val2)) {
-                printf("ERROR: solution %d is not valid.", i);
+                printf("ERROR: solution %d is not valid.\n", i);
                 print_array(out_results + i * n_vars, n_vars, n_vars, "sol: ");
+                // exit(1);
                 valid = false;
             }
         }

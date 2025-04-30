@@ -20,6 +20,14 @@ void print_vv(const std::vector<std::vector<int>>& vv) {
     }
 }
 
+void print_v(const std::vector<int>& v) {
+    std::cout << "v:" << std::endl;
+    for (int val : v) {
+        std::cout << val << " ";
+    }
+    std::cout << std::endl;
+}
+
 void print_umap(const std::unordered_map<int, std::unordered_set<int>>& umap) {
     std::cout << "unordered_map:" << std::endl;
     for (const auto& pair : umap) {
@@ -165,8 +173,16 @@ struct TwoSat2SCC {
             std::swap(c[i], c[j]);
             bool valid = true;
             // Check if the new candidate is valid
-            for (int k = 0; k < j; ++k) {
+            // the component moved forward (c[j]) should not be adjacent to any component in the range [i,j-1]
+            for (int k = i; k < j; ++k) {
                 if (adj_comp_t[c[k]].find(c[j]) != adj_comp_t[c[k]].end()) {
+                    valid = false;
+                    break;
+                }
+            }
+            // any component in the range [i+1,j] should not be adjacent to the component moved backward (c[i])
+            for (int k = j; k > i; --k) {
+                if (adj_comp_t[c[i]].find(c[k]) != adj_comp_t[c[i]].end()) {
                     valid = false;
                     break;
                 }
@@ -238,11 +254,8 @@ size_t arrayify_sccs(TwoSat2SCC *sccs, int n, bool init, int** h_candidates, int
     // printf("comp...\n");
     *h_comp = sccs->arrayify_comp();
     // printf("comp done.\n");
+    // print_v(sccs->comp);
+    // print_vv(sccs->infl_comp);
 
-    // print_vv(sccs.infl_comp);
-    // printf("infl_comp...\n");
     return sccs->arrayify_infl_comp(h_infl_comp, h_infl_comp_end_idx);
-    // printf("infl_comp done.\n");
-    // print_array(h_infl_comp, n_comp * n_comp, n_comp);
-    // printf("Preparing data for kernel done.\n");
 }
