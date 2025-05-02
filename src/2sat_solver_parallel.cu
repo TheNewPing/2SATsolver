@@ -28,32 +28,27 @@ Args:
         it will contain the results.
 */
 __global__ void kernel_solve_2SAT(int n_comp, int n_sol, int n_vars, int* candidates, int* comp, int* infl_comp, int* infl_comp_end_idx, bool* sol_comp) {
-    __shared__ int curr_comp;
     __shared__ bool val_i;
-    __shared__ int* infl_i;
+    __shared__ int offset;
     __shared__ int infl_i_size;
-    __shared__ bool* sol_i;
     for (int i = 0; i < n_sol; i += gridDim.x) {
         int curr_sol = blockIdx.x + i;
         if (curr_sol >= n_sol) return; //rimuovi con n_sol multiplo di blocks
         for (int j = n_comp-1; j >= 0; --j) {
             // load in shared mem the j-th component of the current candidate solution
             if (threadIdx.x == 0) {
-                // separa in altro kernel
-                curr_comp = candidates[curr_sol * n_comp + j];
-                sol_i = sol_comp + (curr_sol * n_comp);
-                int offset = curr_comp == 0 ? 0 : infl_comp_end_idx[curr_comp - 1];
+                int curr_comp = candidates[curr_sol * n_comp + j];
+                offset = curr_comp == 0 ? 0 : infl_comp_end_idx[curr_comp - 1];
                 infl_i_size = infl_comp_end_idx[curr_comp] - offset;
-                infl_i = infl_comp + offset;
-                val_i = sol_i[curr_comp];
+                val_i = sol_comp[curr_sol * n_comp + curr_comp];
             }
             __syncthreads();
             // propagate the effect of the j-th component to all other components
             for (int k = 0; k < infl_i_size; k += blockDim.x) {
                 int infl_idx = threadIdx.x + k;
                 if (infl_idx >= infl_i_size) break;
-                int target_comp = infl_i[infl_idx];
-                sol_i[target_comp] = !val_i;
+                int target_comp = infl_comp[offset + infl_idx];
+                sol_comp[curr_sol * n_comp + target_comp] = !val_i;
             }
             __syncthreads();
         }
