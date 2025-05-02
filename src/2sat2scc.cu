@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <fstream>
 #include <random>
+#include <omp.h>
 
 #include "../include/literal.cu"
 #include "../include/cuda_utilities.cu"
@@ -48,12 +49,18 @@ struct TwoSat2SCC {
     std::vector<bool> used;
     std::vector<int> order, comp;
     std::vector<Literal> vars;
+    std::mt19937 gen;
+    std::uniform_int_distribution<> distrib;
 
     TwoSat2SCC(int _n_vars) : n_vars(_n_vars), n_vertices(2 * n_vars), adj(n_vertices), adj_t(n_vertices), used(n_vertices), order(), comp(n_vertices, -1) {
         order.reserve(n_vertices);
+        std::random_device rd;
+        gen = std::mt19937(rd());
     }
 
     TwoSat2SCC(const std::string& filepath) {
+        std::random_device rd;
+        gen = std::mt19937(rd());
         std::ifstream file(filepath, std::ios::in);
         std::string var1, var2;
         vars.clear();
@@ -143,9 +150,12 @@ struct TwoSat2SCC {
             infl_comp[comp[i]].push_back(comp[i + 1]);
             infl_comp[comp[i + 1]].push_back(comp[i]);
         }
+
+        distrib = std::uniform_int_distribution<>(0, infl_comp.size() - 1);
         return true;
     }
 
+    // Precondition: build_SCC() has been called and returned true
     void build_candidates(int max_solutions, bool init) {
         std::vector<int> c;
         if (init) {
@@ -159,9 +169,6 @@ struct TwoSat2SCC {
         }
         // Generate all candidates by swapping elements starting from the first one
         while (candidates.size() < max_solutions) {
-            std::random_device rd;  // a seed source for the random number engine
-            std::mt19937 gen(rd()); // mersenne_twister_engine seeded with rd()
-            std::uniform_int_distribution<> distrib(0, c.size() - 1);
             int i, j;
             do {
                 i = distrib(gen);
