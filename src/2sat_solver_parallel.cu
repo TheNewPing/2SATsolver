@@ -16,7 +16,7 @@ Repeats for all components of the candidate solution, starting from the last one
 
 Args:
     n_comp: number of components.
-    n_sol: number of candidate solutions.
+    n_sol: number of candidate solutions. must be a multiple of the number of multiprocessors
     n_vars: number of variables.
     candidates: matrix of candidate solutions.
         each row contains a valid permutation of the sccs.
@@ -55,12 +55,13 @@ __global__ void kernel_solve_2SAT(int n_comp, int n_sol, int n_vars, int* candid
     }
 }
 
+// Precondition: n_sol must be a multiple of the number of multiprocessors
 void compute_sccs_solutions(int max_threads, int max_blocks, int n_comp, int n_sol, int n_vars, int n_vertices,
                             int* h_candidates, int* h_infl_comp, int* h_infl_comp_end_idx, size_t infl_comp_bytes, int* h_comp,
                             int** d_comp, bool** d_sol_comp) {
     int threads_per_block = std::min(max_threads, n_comp);
     // int n_blocks = std::min(max_blocks, n_sol);
-    int n_blocks = n_sol;
+    int n_blocks = get_device_prop(0).multiProcessorCount;
 
     bool* h_sol_comp = (bool*)malloc(n_sol * n_comp * sizeof(bool));
     std::fill(h_sol_comp, h_sol_comp + n_sol * n_comp, true);
@@ -127,15 +128,14 @@ __global__ void kernel_comp_to_var(int n_comp, int n_vars, int n_sol, int* comp,
 
     for (int i = 0; i < n_vars; i += gridDim.x) {
         int curr_var = blockIdx.x + i;
-        if (curr_var >= n_vars) return;
         // load in shared mem the component of the current variable
-        if (threadIdx.x == 0) {
+        if (curr_var < n_vars && threadIdx.x == 0) {
             var_comp = comp[curr_var * 2];
         }
         __syncthreads();
-        for (int j = 0; j < n_sol; j += blockDim.x) {
+        for (int j = 0; curr_var < n_vars && j < n_sol; j += blockDim.x) {
             int curr_sol = threadIdx.x + j;
-            if (curr_sol >= n_sol) return;
+            if (curr_sol >= n_sol) break;
             sol_var[curr_sol * n_vars + curr_var] = sol_comp[curr_sol * n_comp + var_comp];
         }
         __syncthreads();
@@ -196,21 +196,18 @@ __global__ void kernel_filter_min_dist(int n_sol, int n_vars, bool* sol_var, boo
     
     for (int i = 0; i < n_sol * n_sol; i += gridDim.x) {
         int curr_sol_row = (blockIdx.x + i) / n_sol;
-        if (curr_sol_row >= n_sol) return;
         int curr_sol_col = (blockIdx.x + i) % n_sol;
-        if (curr_sol_col >= n_sol) return; // cannot happen
+        
+        bool skip = curr_sol_row >= n_sol || curr_sol_row < curr_sol_col || curr_sol_row == curr_sol_col;
 
-        if (curr_sol_row < curr_sol_col) return; // skip symmetric pairs
-        if (curr_sol_row == curr_sol_col) return; // skip diagonal
-
-        if (threadIdx.x == 0) {
+        if (!skip && threadIdx.x == 0) {
             counter = 0;
         }
         __syncthreads();
 
-        for (int j = 0; j < n_vars; j += blockDim.x) {
+        for (int j = 0; !skip && j < n_vars; j += blockDim.x) {
             int curr_var = threadIdx.x + j;
-            if (curr_var >= n_vars) return;
+            if (curr_var >= n_vars) break;
             
             if (sol_var[curr_sol_row * n_vars + curr_var] != sol_var[curr_sol_col * n_vars + curr_var]) {
                 atomicAdd(&counter, 1); // should be at block level, but this version is compatible with all architectures
@@ -218,7 +215,7 @@ __global__ void kernel_filter_min_dist(int n_sol, int n_vars, bool* sol_var, boo
         }
         __syncthreads();
 
-        if (threadIdx.x == 0) {
+        if (!skip && threadIdx.x == 0) {
             sol_var_min_dist[curr_sol_row * n_sol + curr_sol_col] = counter >= min_dist;
             sol_var_min_dist[curr_sol_col * n_sol + curr_sol_row] = counter >= min_dist;
         }

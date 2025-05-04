@@ -26,7 +26,7 @@ for f in $TESTDIR/*.txt; do
     fi
     echo "===== Running on $f (N_SOL=$N_SOL, MIN_DIST=$MIN_DIST) ====="
     output=$($BIN "$f" "$N_SOL" "$MIN_DIST")
-    echo "$output"
+    # echo "$output"
     if echo "$output" | grep -q "All solutions are valid."; then
         passed_tests+=("$filename")
     else
