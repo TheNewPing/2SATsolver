@@ -33,7 +33,7 @@ __global__ void kernel_solve_2SAT(int n_comp, int n_sol, int n_vars, int* candid
     __shared__ int infl_i_size;
     for (int i = 0; i < n_sol; i += gridDim.x) {
         int curr_sol = blockIdx.x + i;
-        if (curr_sol >= n_sol) return; //rimuovi con n_sol multiplo di blocks
+        // if (curr_sol >= n_sol) return; should not happen, n_sol must be a multiple of gridDim.x
         for (int j = n_comp-1; j >= 0; --j) {
             // load in shared mem the j-th component of the current candidate solution
             if (threadIdx.x == 0) {
@@ -59,7 +59,8 @@ void compute_sccs_solutions(int max_threads, int max_blocks, int n_comp, int n_s
                             int* h_candidates, int* h_infl_comp, int* h_infl_comp_end_idx, size_t infl_comp_bytes, int* h_comp,
                             int** d_comp, bool** d_sol_comp) {
     int threads_per_block = std::min(max_threads, n_comp);
-    int n_blocks = std::min(max_blocks, n_sol);
+    // int n_blocks = std::min(max_blocks, n_sol);
+    int n_blocks = n_sol;
 
     bool* h_sol_comp = (bool*)malloc(n_sol * n_comp * sizeof(bool));
     std::fill(h_sol_comp, h_sol_comp + n_sol * n_comp, true);

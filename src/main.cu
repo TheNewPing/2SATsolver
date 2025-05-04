@@ -5,7 +5,7 @@
 #include "2sat_solver_parallel.cu"
 #include "2sat_solver_serial.cu"
 
-int parallel_usage(std::string filename, int n, int min_dist) {
+int parallel_usage(std::string filename, int n, int min_dist, bool print_sol=false) {
     TwoSat2SCC sccs = TwoSat2SCC(filename);
     int n_vars = sccs.n_vars;
     int n_vertices = sccs.n_vertices;
@@ -26,6 +26,13 @@ int parallel_usage(std::string filename, int n, int min_dist) {
     bool *out_results = (bool*)malloc(n * n_vars * sizeof(bool));
     int n_out_results = 0;
     bool init = true;
+        
+    int max_threads = get_device_prop(0).maxThreadsPerBlock;
+    int max_blocks = get_device_prop(0).maxGridSize[0];
+
+    // approximate number of solutions to the closest multiple of the number of multiprocessors
+    int sm_count = get_device_prop(0).multiProcessorCount;
+    int n_sol = ((n + sm_count - 1) / sm_count) * sm_count;
 
     while (n_out_results < n) {
         printf("Current number of solutions: %d\n", n_out_results);
@@ -34,18 +41,14 @@ int parallel_usage(std::string filename, int n, int min_dist) {
         int* h_infl_comp;
         int* h_infl_comp_end_idx;
         int *h_comp;
-        size_t infl_comp_bytes = arrayify_sccs(&sccs, n, init, &h_candidates, &h_comp,
+        size_t infl_comp_bytes = arrayify_sccs(&sccs, n_sol, init, &h_candidates, &h_comp,
                                                &h_infl_comp, &h_infl_comp_end_idx);
         // printf("vv.\n");
         // print_vv(sccs.infl_comp);
         // printf("^^\n");
         // print_array(h_infl_comp, sccs.infl_comp.size(), h_infl_comp_end_idx);
-        int n_sol = sccs.candidates.size();
         int n_comp = sccs.infl_comp.size();
         // printf("n_sol: %d, n_comp: %d\n", n_sol, n_comp);
-        
-        int max_threads = get_device_prop(0).maxThreadsPerBlock;
-        int max_blocks = get_device_prop(0).maxGridSize[0];
         // printf("max_threads: %d, max_blocks: %d\n", max_threads, max_blocks);
 
         // ----------- Compute solutions based on sccs ----------- 
@@ -75,8 +78,10 @@ int parallel_usage(std::string filename, int n, int min_dist) {
     }
 
     // print output
-    printf("Parallel solutions:\n");
-    print_array(out_results, n_out_results * n_vars, n_vars, "sol: ");
+    if (print_sol) {
+        printf("Parallel solutions:\n");
+        print_array(out_results, n_out_results * n_vars, n_vars, "sol: ");
+    }
 
     // verify output
     if (verify_solutions(out_results, n_out_results, sccs.vars, n_vars)) {
@@ -88,21 +93,25 @@ int parallel_usage(std::string filename, int n, int min_dist) {
     }
 }
 
-int serial_usage(std::string filename, int n, int min_dist) {
+int serial_usage(std::string filename, int n, int min_dist, bool print_sol=false) {
     TwoSatSolverSerial solver_ser = TwoSatSolverSerial(filename);
     if (!solver_ser.solve_2SAT()) {
         std::cout << "No solution" << std::endl;
         return -1;
     }
     solver_ser.solve_from_all_nodes(n, min_dist);
-    std::cout << "Serial solutions:" << std::endl;
-    for (const auto& sol : solver_ser.solutions) {
-        std::cout << "sol: ";
-        for (bool val : sol) {
-            std::cout << val << " ";
+
+    if (print_sol) {
+        std::cout << "Serial solutions:" << std::endl;
+        for (const auto& sol : solver_ser.solutions) {
+            std::cout << "sol: ";
+            for (bool val : sol) {
+                std::cout << val << " ";
+            }
+            std::cout << std::endl;
         }
-        std::cout << std::endl;
     }
+
     if (verify_solutions(solver_ser.solutions, solver_ser.vars)) {
         std::cout << "All solutions are valid." << std::endl;
         return solver_ser.solutions.size();
@@ -114,16 +123,21 @@ int serial_usage(std::string filename, int n, int min_dist) {
 
 int main(int argc, char** argv) {
     if (argc < 4) {
-        std::cout << "Usage: " << argv[0] << " [-c] <filename> <number of solutions> <min hamming dist>" << std::endl;
+        std::cout << "Usage: " << argv[0] << " [-c] [-v] <filename> <number of solutions> <min hamming dist>" << std::endl;
         return 1;
     }
 
     bool run_serial = false;
+    bool print_sol = false;
     int arg_offset = 0;
 
     if (std::string(argv[1]) == "-c") {
         run_serial = true;
-        arg_offset = 1;
+        arg_offset++;
+    }
+    if (std::string(argv[1 + arg_offset]) == "-v") {
+        print_sol = true;
+        arg_offset++;
     }
 
     const char* filename = argv[1 + arg_offset];
@@ -131,7 +145,7 @@ int main(int argc, char** argv) {
     int min_dist = std::stoi(argv[3 + arg_offset]);
 
     auto start_par = std::chrono::high_resolution_clock::now();
-    int par_n_sol = parallel_usage(filename, n, min_dist);
+    int par_n_sol = parallel_usage(filename, n, min_dist, print_sol);
     auto end_par = std::chrono::high_resolution_clock::now();
     auto ms_par = std::chrono::duration_cast<std::chrono::milliseconds>(end_par - start_par);
 
@@ -140,7 +154,7 @@ int main(int argc, char** argv) {
     if (run_serial) {
         std::cout << std::endl;
         auto start_ser = std::chrono::high_resolution_clock::now();
-        int ser_n_sol = serial_usage(filename, n, min_dist);
+        int ser_n_sol = serial_usage(filename, n, min_dist, print_sol);
         auto end_ser = std::chrono::high_resolution_clock::now();
         auto ms_ser = std::chrono::duration_cast<std::chrono::milliseconds>(end_ser - start_ser);
         std::cout << "Serial time: " << ms_ser.count() << " ms" << std::endl;
