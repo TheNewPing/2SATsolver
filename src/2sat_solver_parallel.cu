@@ -27,7 +27,7 @@ Args:
     sol_comp: matrix of solutions on components, must be initialized with all values = true,
         it will contain the results.
 */
-__global__ void kernel_solve_2SAT(int n_comp, int n_sol, int n_vars, int* candidates, int* comp, int* infl_comp, int* infl_comp_end_idx, bool* sol_comp) {
+__global__ void kernel_solve_2SAT(int n_comp, int n_sol, int n_vars, int* candidates, int* comp, int* infl_comp, int* infl_comp_end_idx, uchar1* sol_comp) {
     __shared__ bool val_i;
     __shared__ int offset;
     __shared__ int infl_i_size;
@@ -40,7 +40,8 @@ __global__ void kernel_solve_2SAT(int n_comp, int n_sol, int n_vars, int* candid
                 int curr_comp = candidates[curr_sol * n_comp + j];
                 offset = curr_comp == 0 ? 0 : infl_comp_end_idx[curr_comp - 1];
                 infl_i_size = infl_comp_end_idx[curr_comp] - offset;
-                val_i = sol_comp[curr_sol * n_comp + curr_comp];
+                uchar1 byte_val = sol_comp[curr_sol * ((n_comp + 7) / 8) + curr_comp / 8];
+                val_i = (byte_val.x >> (curr_comp % 8)) & 1;
             }
             __syncthreads();
             // propagate the effect of the j-th component to all other components
@@ -48,7 +49,14 @@ __global__ void kernel_solve_2SAT(int n_comp, int n_sol, int n_vars, int* candid
                 int infl_idx = threadIdx.x + k;
                 if (infl_idx >= infl_i_size) break;
                 int target_comp = infl_comp[offset + infl_idx];
-                sol_comp[curr_sol * n_comp + target_comp] = !val_i;
+                int idx = curr_sol * ((n_comp + 7) / 8) + target_comp / 8;
+                uchar1 byte_val = sol_comp[idx];
+                // Set or clear the bit at (target_comp % 8) based on val_i, without branching
+                // If val_i == 0: set bit to 1 (OR with mask)
+                // If val_i == 1: set bit to 0 (AND with inverted mask)
+                unsigned char mask = 1 << (target_comp % 8);
+                byte_val.x = (byte_val.x & (~mask)) | ((~val_i & 1) * mask);
+                sol_comp[idx] = byte_val;
             }
             __syncthreads();
         }
@@ -58,17 +66,19 @@ __global__ void kernel_solve_2SAT(int n_comp, int n_sol, int n_vars, int* candid
 // Precondition: n_sol must be a multiple of the number of multiprocessors
 void compute_sccs_solutions(int max_threads, int max_blocks, int n_comp, int n_sol, int n_vars, int n_vertices,
                             int* h_candidates, int* h_infl_comp, int* h_infl_comp_end_idx, size_t infl_comp_bytes, int* h_comp,
-                            int** d_comp, bool** d_sol_comp) {
+                            int** d_comp, uchar1** d_sol_comp) {
     int threads_per_block = std::min(max_threads, n_comp);
     // int n_blocks = std::min(max_blocks, n_sol);
     int n_blocks = get_device_prop(0).multiProcessorCount;
 
-    bool* h_sol_comp = (bool*)malloc(n_sol * n_comp * sizeof(bool));
-    std::fill(h_sol_comp, h_sol_comp + n_sol * n_comp, true);
+    // each value contains 8 bits, rows are aligned to 1 byte
+    size_t sol_comp_size = n_sol * ((n_comp + 7) / 8) * sizeof(uchar1);
+    uchar1* h_sol_comp = (uchar1*)malloc(sol_comp_size);
+    // Initialize all values to 0xFF (true)
+    std::fill(h_sol_comp, h_sol_comp + sol_comp_size / sizeof(uchar1), uchar1{0xFF});
     
     size_t candidates_size = n_sol * n_comp * sizeof(int);
     size_t comp_size = n_vertices * sizeof(int);
-    size_t sol_comp_size = n_sol * n_comp * sizeof(bool);
     size_t infl_comp_sizes_size = n_comp * sizeof(int);
     size_t max_heap_size = candidates_size + infl_comp_bytes + infl_comp_sizes_size + comp_size + sol_comp_size;
     set_heap_size(max_heap_size);
@@ -95,7 +105,7 @@ void compute_sccs_solutions(int max_threads, int max_blocks, int n_comp, int n_s
     // printf("Computing sccs solutions done.\n");
 
     // Copy results back to host
-    HANDLE_ERROR(cudaMemcpy(h_sol_comp, *d_sol_comp, n_sol * n_comp * sizeof(bool), cudaMemcpyDeviceToHost));
+    // HANDLE_ERROR(cudaMemcpy(h_sol_comp, *d_sol_comp, sol_comp_size, cudaMemcpyDeviceToHost));
     // print_array(h_sol_comp, n_sol * n_comp, n_comp);
 
     // Free device memory
@@ -106,6 +116,7 @@ void compute_sccs_solutions(int max_threads, int max_blocks, int n_comp, int n_s
     free(h_candidates);
     free(h_infl_comp);
     free(h_comp);
+    free(h_sol_comp);
 }
 
 
@@ -123,7 +134,7 @@ Args:
     sol_var: matrix of solutions on variables, must be initialized with all values = false,
         it will contain the results.
 */
-__global__ void kernel_comp_to_var(int n_comp, int n_vars, int n_sol, int* comp, bool* sol_comp, bool* sol_var) {
+__global__ void kernel_comp_to_var(int n_comp, int n_vars, int n_sol, int* comp, uchar1* sol_comp, bool* sol_var) {
     __shared__ int var_comp;
 
     for (int i = 0; i < n_vars; i += gridDim.x) {
@@ -136,23 +147,24 @@ __global__ void kernel_comp_to_var(int n_comp, int n_vars, int n_sol, int* comp,
         for (int j = 0; curr_var < n_vars && j < n_sol; j += blockDim.x) {
             int curr_sol = threadIdx.x + j;
             if (curr_sol >= n_sol) break;
-            sol_var[curr_sol * n_vars + curr_var] = sol_comp[curr_sol * n_comp + var_comp];
+            uchar1 byte_val = sol_comp[curr_sol * ((n_comp + 7) / 8) + var_comp / 8];
+            sol_var[curr_sol * n_vars + curr_var] = (byte_val.x >> (var_comp % 8)) & 1;
         }
         __syncthreads();
     }
 }
 
 void solutions_sccs_to_vars(int max_threads, int max_blocks, int n_comp, int n_sol, int n_vars, int n_vertices,
-                            int* d_comp, bool* d_sol_comp, bool** h_sol_var) {
+                            int* d_comp, uchar1* d_sol_comp, bool** h_sol_var) {
     int threads_per_block = std::min(max_threads, n_sol);
     int n_blocks = std::min(max_blocks, n_vars);
 
-    *h_sol_var = (bool*)malloc(n_sol * n_vars * sizeof(bool));
-    std::fill(*h_sol_var, *h_sol_var + n_sol * n_vars, false);
-    
     size_t sol_var_size = n_sol * n_vars * sizeof(bool);
+    *h_sol_var = (bool*)malloc(sol_var_size);
+    std::fill(*h_sol_var, *h_sol_var + sol_var_size / sizeof(bool), false);
+    
     size_t comp_size = n_vertices * sizeof(int);
-    size_t sol_comp_size = n_sol * n_comp * sizeof(bool);
+    size_t sol_comp_size = n_sol * ((n_comp + 7) / 8) * sizeof(uchar1);
     size_t max_heap_size = comp_size + sol_comp_size + sol_var_size;
     set_heap_size(max_heap_size);
 
@@ -166,7 +178,7 @@ void solutions_sccs_to_vars(int max_threads, int max_blocks, int n_comp, int n_s
     // printf("Converting sccs solutions to variable solutions done.\n");
 
     // Copy results back to host
-    HANDLE_ERROR(cudaMemcpy(*h_sol_var, d_sol_var, n_sol * n_vars * sizeof(bool), cudaMemcpyDeviceToHost));
+    HANDLE_ERROR(cudaMemcpy(*h_sol_var, d_sol_var, sol_var_size, cudaMemcpyDeviceToHost));
     // print_array(*h_sol_var, n_sol * n_vars, n_vars);
 
     // Free device memory

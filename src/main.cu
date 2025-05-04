@@ -53,7 +53,7 @@ int parallel_usage(std::string filename, int n, int min_dist, bool print_sol=fal
 
         // ----------- Compute solutions based on sccs ----------- 
         int *d_comp;
-        bool *d_sol_comp;
+        uchar1 *d_sol_comp;
         compute_sccs_solutions(max_threads, max_blocks, n_comp, n_sol, n_vars, n_vertices,
                                h_candidates, h_infl_comp, h_infl_comp_end_idx, infl_comp_bytes, h_comp,
                                &d_comp, &d_sol_comp);
