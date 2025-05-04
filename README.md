@@ -4,7 +4,7 @@ Lists K solutions of a 2 SAT instance, having a minimum Hamming distance between
 
 ## Usage
 
-A usage example can be compiled with `nvcc src/main.cu -o bin/main`. It can then be used with `bin/main [-c] <test_file> <number of solutions> <minimum hamming distance>`. Many test files can be found in the `test_data` directory. The `-c` flag is used to run the serial algorithm after the parallel one, then compare the execution times.
+A usage example can be compiled with `nvcc -Xcompiler -fopenmp -lgomp -Iinclude src/main.cu -o bin/main`. It can then be used with `bin/main [-c] <test_file> <number of solutions> <minimum hamming distance>`. Many test files can be found in the `test_data` directory. The `-c` flag is used to run the serial algorithm after the parallel one, then compare the execution times.
 
 ## Instance generator
 

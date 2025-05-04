@@ -158,51 +158,58 @@ struct TwoSat2SCC {
     // Precondition: build_SCC() has been called and returned true
     void build_candidates(int max_solutions, bool init) {
         std::vector<int> c;
+        int init_ctr = 0;
         if (init) {
-            candidates.clear();
+            candidates.resize(max_solutions);
             c.resize(infl_comp.size());
             std::iota(c.begin(), c.end(), 0);
-            candidates.push_back(c);
+            candidates[init_ctr++] = c;
         } else {
-            c = std::vector<int>(candidates.back());
-            candidates.clear();
+            c = std::vector<int>(candidates[max_solutions - 1]);
         }
         // Generate all candidates by swapping elements starting from the first one
-        while (candidates.size() < max_solutions) {
-            int i, j;
-            do {
-                i = distrib(gen);
-                j = distrib(gen);
-            } while (i == j);
-            if (i > j) {
-                std::swap(i, j);
-            }
-            std::swap(c[i], c[j]);
-            bool valid = true;
-            // Check if the new candidate is valid
-            // the component moved forward (c[j]) should not be adjacent to any component in the range [i,j-1]
-            for (int k = i; k < j; ++k) {
-                if (adj_comp_t[c[k]].find(c[j]) != adj_comp_t[c[k]].end()) {
-                    valid = false;
-                    break;
+        #pragma omp parallel for \
+            schedule(auto) \
+            firstprivate(c) \
+            shared(candidates, adj_comp_t, distrib, gen)
+        for (int ctr = init_ctr; ctr < max_solutions; ++ctr) {
+            bool valid = false;
+            while (!valid) {
+                int i, j;
+                do {
+                    i = distrib(gen);
+                    j = distrib(gen);
+                } while (i == j);
+                if (i > j) {
+                    // this is needed later to check if the candidate is valid
+                    std::swap(i, j);
                 }
-            }
-            // any component in the range [i+1,j] should not be adjacent to the component moved backward (c[i])
-            for (int k = j; k > i; --k) {
-                if (adj_comp_t[c[i]].find(c[k]) != adj_comp_t[c[i]].end()) {
-                    valid = false;
-                    break;
-                }
-            }
-            if (valid) {
-                candidates.push_back(c);
-                // Check if we have reached the maximum number of solutions
-                if (candidates.size() >= max_solutions) {
-                    return;
-                }
-            } else {
-                // If the candidate is not valid, swap back
                 std::swap(c[i], c[j]);
+
+                // Check if the new candidate is valid
+                valid = true;
+                // the component moved forward (c[j]) should not be adjacent to any component in the range [i,j-1]
+                for (int k = i; k < j; ++k) {
+                    if (adj_comp_t[c[k]].find(c[j]) != adj_comp_t[c[k]].end()) {
+                        valid = false;
+                        break;
+                    }
+                }
+                // any component in the range [i+1,j] should not be adjacent to the component moved backward (c[i])
+                if (valid) {
+                    for (int k = j; k > i; --k) {
+                        if (adj_comp_t[c[i]].find(c[k]) != adj_comp_t[c[i]].end()) {
+                            valid = false;
+                            break;
+                        }
+                    }
+                }
+                if (valid) {
+                    candidates[ctr] = c;
+                } else {
+                    // If the candidate is not valid, swap back
+                    std::swap(c[i], c[j]);
+                }
             }
         }
     }
