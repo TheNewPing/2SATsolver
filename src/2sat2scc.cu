@@ -156,7 +156,7 @@ struct TwoSat2SCC {
     }
 
     // Precondition: build_SCC() has been called and returned true
-    void build_candidates(int max_solutions, bool init) {
+    void build_candidates(int max_solutions, bool init, int iterations = 1) {
         std::vector<int> c;
         int init_ctr = 0;
         if (init) {
@@ -173,44 +173,45 @@ struct TwoSat2SCC {
             firstprivate(c) \
             shared(candidates, adj_comp_t, distrib, gen)
         for (int ctr = init_ctr; ctr < max_solutions; ++ctr) {
-            bool valid = false;
-            while (!valid) {
-                int i, j;
-                do {
-                    i = distrib(gen);
-                    j = distrib(gen);
-                } while (i == j);
-                if (i > j) {
-                    // this is needed later to check if the candidate is valid
-                    std::swap(i, j);
-                }
-                std::swap(c[i], c[j]);
-
-                // Check if the new candidate is valid
-                valid = true;
-                // the component moved forward (c[j]) should not be adjacent to any component in the range [i,j-1]
-                for (int k = i; k < j; ++k) {
-                    if (adj_comp_t[c[k]].find(c[j]) != adj_comp_t[c[k]].end()) {
-                        valid = false;
-                        break;
+            for (int itr = 0; itr < iterations; ++itr) {
+                bool valid = false;
+                while (!valid) {
+                    int i, j;
+                    do {
+                        i = distrib(gen);
+                        j = distrib(gen);
+                    } while (i == j);
+                    if (i > j) {
+                        // this is needed later to check if the candidate is valid
+                        std::swap(i, j);
                     }
-                }
-                // any component in the range [i+1,j] should not be adjacent to the component moved backward (c[i])
-                if (valid) {
-                    for (int k = j; k > i; --k) {
-                        if (adj_comp_t[c[i]].find(c[k]) != adj_comp_t[c[i]].end()) {
+                    std::swap(c[i], c[j]);
+
+                    // Check if the new candidate is valid
+                    valid = true;
+                    // the component moved forward (c[j]) should not be adjacent to any component in the range [i,j-1]
+                    for (int k = i; k < j; ++k) {
+                        if (adj_comp_t[c[k]].find(c[j]) != adj_comp_t[c[k]].end()) {
                             valid = false;
                             break;
                         }
                     }
-                }
-                if (valid) {
-                    candidates[ctr] = c;
-                } else {
-                    // If the candidate is not valid, swap back
-                    std::swap(c[i], c[j]);
+                    // any component in the range [i+1,j] should not be adjacent to the component moved backward (c[i])
+                    if (valid) {
+                        for (int k = j; k > i; --k) {
+                            if (adj_comp_t[c[i]].find(c[k]) != adj_comp_t[c[i]].end()) {
+                                valid = false;
+                                break;
+                            }
+                        }
+                    }
+                    if (!valid){
+                        // If the candidate is not valid, swap back
+                        std::swap(c[i], c[j]);
+                    }
                 }
             }
+            candidates[ctr] = c;
         }
     }
 

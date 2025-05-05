@@ -49,7 +49,7 @@ int parallel_usage(std::string filename, int n, int min_dist, bool print_sol=fal
     while (n_out_results < n) {
         printf("Current number of solutions: %d\n", n_out_results);
 
-        sccs.build_candidates(n_sol, init);
+        sccs.build_candidates(n_sol, init, min_dist);
         int *h_candidates = sccs.arrayify_candidates();
         // print_vv(sccs.candidates);
 
