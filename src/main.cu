@@ -34,22 +34,24 @@ int parallel_usage(std::string filename, int n, int min_dist, bool print_sol=fal
     int sm_count = get_device_prop(0).multiProcessorCount;
     int n_sol = ((n + sm_count - 1) / sm_count) * sm_count;
 
+    // int *h_infl_comp;
+    // int *h_infl_comp_end_idx;
+    // int *h_comp = sccs.arrayify_comp();
+    // size_t infl_comp_bytes = sccs.arrayify_infl_comp(&h_infl_comp, &h_infl_comp_end_idx);
+    // int n_comp = sccs.infl_comp.size();
+
+    int *h_infl_comp;
+    int *h_infl_comp_end_idx;
+    int *h_comp = sccs.arrayify_comp();
+    size_t infl_comp_bytes = sccs.arrayify_infl_comp(&h_infl_comp, &h_infl_comp_end_idx);
+    int n_comp = sccs.infl_comp.size();
+
     while (n_out_results < n) {
         printf("Current number of solutions: %d\n", n_out_results);
 
-        int *h_candidates;
-        int* h_infl_comp;
-        int* h_infl_comp_end_idx;
-        int *h_comp;
-        size_t infl_comp_bytes = arrayify_sccs(&sccs, n_sol, init, &h_candidates, &h_comp,
-                                               &h_infl_comp, &h_infl_comp_end_idx);
-        // printf("vv.\n");
-        // print_vv(sccs.infl_comp);
-        // printf("^^\n");
-        // print_array(h_infl_comp, sccs.infl_comp.size(), h_infl_comp_end_idx);
-        int n_comp = sccs.infl_comp.size();
-        // printf("n_sol: %d, n_comp: %d\n", n_sol, n_comp);
-        // printf("max_threads: %d, max_blocks: %d\n", max_threads, max_blocks);
+        sccs.build_candidates(n_sol, init);
+        int *h_candidates = sccs.arrayify_candidates();
+        // print_vv(sccs.candidates);
 
         // ----------- Compute solutions based on sccs ----------- 
         int *d_comp;
@@ -57,11 +59,14 @@ int parallel_usage(std::string filename, int n, int min_dist, bool print_sol=fal
         compute_sccs_solutions(max_threads, max_blocks, n_comp, n_sol, n_vars, n_vertices,
                                h_candidates, h_infl_comp, h_infl_comp_end_idx, infl_comp_bytes, h_comp,
                                &d_comp, &d_sol_comp);
+        free(h_candidates);
 
         // ----------- Transfer sccs solutions to variable solutions ----------- 
         bool *h_sol_var;
         solutions_sccs_to_vars(max_threads, max_blocks, n_comp, n_sol, n_vars, n_vertices,
                                d_comp, d_sol_comp, &h_sol_var);
+        HANDLE_ERROR(cudaFree(d_comp));
+        HANDLE_ERROR(cudaFree(d_sol_comp));
 
         // ----------- Compute compatibility between solutions based on min dist ----------- 
         bool *h_sol_var_min_dist;
@@ -71,11 +76,16 @@ int parallel_usage(std::string filename, int n, int min_dist, bool print_sol=fal
         // ----------- Build the final results -----------
         n_out_results = insert_new_solution(init, n_sol, n_vars, n, h_sol_var, h_sol_var_min_dist,
                                             out_results, n_out_results);
+        free(h_sol_var);
+        free(h_sol_var_min_dist);
 
         init = false;
         // printf("PARTIAL solutions:\n");
         // print_array(out_results, n_out_results * n_vars, n_vars, "sol: ");
     }
+
+    free(h_comp);
+    free(h_infl_comp);
 
     // print output
     if (print_sol) {

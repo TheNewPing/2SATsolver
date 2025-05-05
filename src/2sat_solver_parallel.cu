@@ -95,17 +95,16 @@ void compute_sccs_solutions(int max_threads, int max_blocks, int n_comp, int n_s
     // printf("Computing sccs solutions done.\n");
 
     // Copy results back to host
-    HANDLE_ERROR(cudaMemcpy(h_sol_comp, *d_sol_comp, n_sol * n_comp * sizeof(bool), cudaMemcpyDeviceToHost));
+    // HANDLE_ERROR(cudaMemcpy(h_sol_comp, *d_sol_comp, n_sol * n_comp * sizeof(bool), cudaMemcpyDeviceToHost));
     // print_array(h_sol_comp, n_sol * n_comp, n_comp);
 
     // Free device memory
     HANDLE_ERROR(cudaFree(d_candidates));
     HANDLE_ERROR(cudaFree(d_infl_comp));
+    HANDLE_ERROR(cudaFree(d_infl_comp_sizes));
 
     // Free host memory
-    free(h_candidates);
-    free(h_infl_comp);
-    free(h_comp);
+    free(h_sol_comp);
 }
 
 
@@ -170,8 +169,6 @@ void solutions_sccs_to_vars(int max_threads, int max_blocks, int n_comp, int n_s
     // print_array(*h_sol_var, n_sol * n_vars, n_vars);
 
     // Free device memory
-    HANDLE_ERROR(cudaFree(d_comp));
-    HANDLE_ERROR(cudaFree(d_sol_comp));
     HANDLE_ERROR(cudaFree(d_sol_var));
 }
 
@@ -311,10 +308,6 @@ int insert_new_solution(bool init, int n_sol, int n_vars, int n, bool* h_sol_var
             inserted_solutions.push_back(i);
         }
     }
-
-    // Free host memory
-    free(h_sol_var);
-    free(h_sol_var_min_dist);
 
     // printf("Building final results done.\n");
     return inserted_solutions.size();

@@ -4,6 +4,8 @@
 *.ptx
 *.cubin
 *.fatbin
+*.nsys-rep
+*.sqlite
 
 *.o
 bin/*
