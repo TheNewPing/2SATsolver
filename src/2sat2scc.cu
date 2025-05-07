@@ -10,36 +10,6 @@
 #include "../include/literal.cu"
 #include "../include/cuda_utilities.cu"
 
-void print_vv(const std::vector<std::vector<int>>& vv) {
-    std::cout << "vv:" << std::endl;
-    for (const auto& v : vv) {
-        for (int val : v) {
-            std::cout << val << " ";
-        }
-        std::cout << std::endl;
-    }
-}
-
-void print_v(const std::vector<int>& v) {
-    std::cout << "v:" << std::endl;
-    for (int val : v) {
-        std::cout << val << " ";
-    }
-    std::cout << std::endl;
-}
-
-void print_umap(const std::unordered_map<int, std::unordered_set<int>>& umap) {
-    std::cout << "unordered_map:" << std::endl;
-    for (const auto& pair : umap) {
-        std::cout << pair.first << ": { ";
-        for (const int val : pair.second) {
-            std::cout << val << " ";
-        }
-        std::cout << "}" << std::endl;
-    }
-}
-
-
 struct TwoSat2SCC {
     int n_vars;
     int n_vertices;
