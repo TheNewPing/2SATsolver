@@ -1,6 +1,5 @@
 #include <iostream>
 #include <vector>
-#include <cassert>
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
@@ -52,10 +51,24 @@ struct TwoSat2SCC {
     std::mt19937 gen;
     std::uniform_int_distribution<> distrib;
 
-    TwoSat2SCC(int _n_vars) : n_vars(_n_vars), n_vertices(2 * n_vars), adj(n_vertices), adj_t(n_vertices), used(n_vertices), order(), comp(n_vertices, -1) {
-        order.reserve(n_vertices);
+    TwoSat2SCC(Literal* formulas, int n) {
         std::random_device rd;
         gen = std::mt19937(rd());
+        vars.clear();
+        for (int i = 0; i < n * 2; ++i) {
+            vars.push_back(formulas[i]);
+        }
+        Literal max_var = *max_element(vars.begin(), vars.end());
+        n_vars = max_var.value + 1;
+        n_vertices = 2 * n_vars;
+        adj.resize(n_vertices);
+        adj_t.resize(n_vertices);
+        used.resize(n_vertices);
+        comp.resize(n_vertices, -1);
+        order.reserve(n_vertices);
+        for (size_t i = 0; i < vars.size(); i += 2) {
+            add_disjunction(vars[i], vars[i + 1]);
+        }
     }
 
     TwoSat2SCC(const std::string& filepath) {
@@ -63,7 +76,6 @@ struct TwoSat2SCC {
         gen = std::mt19937(rd());
         std::ifstream file(filepath, std::ios::in);
         std::string var1, var2;
-        vars.clear();
         if (!file.is_open()) {
             throw std::runtime_error("Could not open file: " + filepath);
         }

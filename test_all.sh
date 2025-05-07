@@ -29,10 +29,12 @@ for f in $TESTDIR/*.txt; do
     # echo "$output"
     if echo "$output" | grep -q "All solutions are valid."; then
         passed_tests+=("$filename")
+        echo "Test $filename passed."
     else
         failed_tests+=("$filename")
+        echo "Test $filename failed."
     fi
-    echo "========================"
+    # echo "========================"
 done
 
 echo

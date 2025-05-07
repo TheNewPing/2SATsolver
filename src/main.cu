@@ -1,4 +1,3 @@
-#include <cassert>
 #include <chrono>
 
 #include "2sat2scc.cu"
