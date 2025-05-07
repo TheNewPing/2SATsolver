@@ -51,13 +51,9 @@ struct TwoSat2SCC {
     std::mt19937 gen;
     std::uniform_int_distribution<> distrib;
 
-    TwoSat2SCC(Literal* formulas, int n) {
+    void init() {
         std::random_device rd;
         gen = std::mt19937(rd());
-        vars.clear();
-        for (int i = 0; i < n * 2; ++i) {
-            vars.push_back(formulas[i]);
-        }
         Literal max_var = *max_element(vars.begin(), vars.end());
         n_vars = max_var.value + 1;
         n_vertices = 2 * n_vars;
@@ -71,9 +67,24 @@ struct TwoSat2SCC {
         }
     }
 
+    TwoSat2SCC(Literal* formulas, int n) {
+        for (int i = 0; i < n * 2; ++i) {
+            vars.push_back(formulas[i]);
+        }
+        init();
+    }
+
+    TwoSat2SCC(int n, float new_variable_probability=0.9) {
+        do {
+            Literal *formulas = generate_2cnf(n, new_variable_probability);
+            for (int i = 0; i < n * 2; ++i) {
+                vars.push_back(formulas[i]);
+            }
+            init();
+        } while (!build_SCC());
+    }
+
     TwoSat2SCC(const std::string& filepath) {
-        std::random_device rd;
-        gen = std::mt19937(rd());
         std::ifstream file(filepath, std::ios::in);
         std::string var1, var2;
         if (!file.is_open()) {
@@ -83,17 +94,7 @@ struct TwoSat2SCC {
             vars.push_back(Literal(var1));
             vars.push_back(Literal(var2));
         }
-        Literal max_var = *max_element(vars.begin(), vars.end());
-        n_vars = max_var.value + 1;
-        n_vertices = 2 * n_vars;
-        adj.resize(n_vertices);
-        adj_t.resize(n_vertices);
-        used.resize(n_vertices);
-        comp.resize(n_vertices, -1);
-        order.reserve(n_vertices);
-        for (size_t i = 0; i < vars.size(); i += 2) {
-            add_disjunction(vars[i], vars[i + 1]);
-        }
+        init();
     }
 
     void add_disjunction(Literal var1, Literal var2) {
