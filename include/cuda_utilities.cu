@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <iostream>
 #include <vector>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "./cuda_error.cu"

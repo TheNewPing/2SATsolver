@@ -3,7 +3,10 @@
 
 // literal.cu
 
+#include <iostream>
+#include <random>
 #include <string>
+#include <fstream>
 
 struct Literal {
     unsigned int value;

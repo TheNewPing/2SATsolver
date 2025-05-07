@@ -1,12 +1,5 @@
 #include <iostream>
-#include <fstream>
-#include <curand_kernel.h>
-#include <ctime>
-#include <cassert>
-#include <random>
 
-#include "../include/cuda_error.cu"
-#include "../include/cuda_utilities.cu"
 #include "../include/literal.cu"
 
 int main(int argc, char* argv[]) {
