@@ -34,6 +34,18 @@ struct TwoSat2SCC {
         }
     }
 
+    void clear_all() {
+        adj.clear();
+        adj_t.clear();
+        infl_comp.clear();
+        candidates.clear();
+        adj_comp_t.clear();
+        used.clear();
+        order.clear();
+        comp.clear();
+        vars.clear();
+    }
+
     TwoSat2SCC(Literal* formulas, int n) {
         for (int i = 0; i < n * 2; ++i) {
             vars.push_back(formulas[i]);
@@ -46,12 +58,7 @@ struct TwoSat2SCC {
         do {
             if (formulas) {
                 free(formulas);
-                vars.clear();
-                adj.clear();
-                adj_t.clear();
-                used.clear();
-                comp.clear();
-                order.clear();
+                clear_all();
             }
             formulas = generate_2cnf(gen, n, new_variable_probability);
             for (int i = 0; i < n * 2; ++i) {

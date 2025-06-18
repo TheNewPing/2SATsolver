@@ -136,7 +136,6 @@ __global__ void kernel_comp_to_var(int n_comp, int n_vars, int n_sol, int* comp,
             bool val_comp2 = sol_comp[curr_sol * n_comp + var_comp2];
             if (val_comp1 == val_comp2) {
                 printf("Error: Variable %d has both assignments equal in solution %d\n", curr_var, curr_sol);
-                //asm("trap;");
             }
             sol_var[curr_sol * n_vars + curr_var] = sol_comp[curr_sol * n_comp + var_comp1];
         }

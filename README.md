@@ -67,7 +67,7 @@ nvcc -Xcompiler -fopenmp -lgomp -Iinclude src/benchmark.cu -o bin/benchmark
 Run the benchmark with:
 
 ```sh
-bin/benchmark <repetitions number> <solutions number> <formulas per instance> <minimum distance between solutions> <probability to generate new variables> <parallel=1, serial=0> <output filename>
+bin/benchmark <repetitions number> <solutions number> <formulas per instance> <minimum distance between solutions> <probability to generate new variables> <parallel=1, serial=0> <output filename> [inputpath1 inputpath2 ...]
 ```
 
 - `<repetitions number>`: Number of times to repeat the benchmark.
@@ -77,5 +77,6 @@ bin/benchmark <repetitions number> <solutions number> <formulas per instance> <m
 - `<probability to generate new variables>`: Probability (0.0–1.0) to introduce new variables in formulas.
 - `<parallel=1, serial=0>`: Set to 1 for parallel execution (GPU), 0 for serial execution (CPU).
 - `<output filename>`: Path to the file where benchmark results will be saved.
+- `[inputpaths...]`: List of paths to files containing 2sat formulas. If provided, the benchmark will iterate over the list, without creating new formulas. It can also be a directory, in such case all .txt files inside it will be used in the benchmark.
 
 Adjust these parameters as needed to evaluate different scenarios and performance characteristics.

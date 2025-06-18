@@ -12,3 +12,6 @@ bin/*
 obj/*
 .vscode/*
 test/*
+
+debug*
+error*
