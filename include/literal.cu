@@ -88,29 +88,27 @@ void print_array(Literal* array, int size) {
     std::cout << std::endl;
 }
 
-Literal* generate_2cnf(int n, float new_variable_probability) {
+Literal* generate_2cnf(std::mt19937 *gen, int n, float new_variable_probability) {
     Literal* h_formulas = (Literal*)malloc(sizeof(Literal) * n * 2);
 
-    std::random_device rd;  // a seed source for the random number engine
-    std::mt19937 gen(rd()); // mersenne_twister_engine seeded with rd()
     std::bernoulli_distribution distrib_sign(0.5);
     std::bernoulli_distribution distrib_new_var(new_variable_probability);
     
     int max_var = 0;
     unsigned int var_name = 0;
-    bool sign = distrib_sign(gen);
+    bool sign = distrib_sign(*gen);
     h_formulas[0] = Literal(var_name, sign);
     std::uniform_int_distribution<unsigned int> distrib_n(0, max_var);
     for (int i = 1; i < n * 2; ++i) {
-        bool new_var = distrib_new_var(gen);
+        bool new_var = distrib_new_var(*gen);
         if (new_var) {
             max_var++;
             distrib_n = std::uniform_int_distribution<unsigned int>(0, max_var);
             var_name = max_var;
         } else {
-            var_name = distrib_n(gen);
+            var_name = distrib_n(*gen);
         }
-        sign = distrib_sign(gen);
+        sign = distrib_sign(*gen);
         h_formulas[i] = Literal(var_name, sign);
     }
     
@@ -121,6 +119,14 @@ void formulas_to_file(Literal* h_formulas, int n, const std::string& filename) {
     std::ofstream outfile(filename);
     for (int i = 0; i < n; ++i) {
         outfile << h_formulas[i * 2].to_string() << " " << h_formulas[i * 2 + 1].to_string() << "\n";
+    }
+    outfile.close();
+}
+
+void formulas_to_file(std::vector<Literal>& formulas, const std::string& filename) {
+    std::ofstream outfile(filename);
+    for (int i = 0; i < formulas.size()/2; ++i) {
+        outfile << formulas[i * 2].to_string() << " " << formulas[i * 2 + 1].to_string() << "\n";
     }
     outfile.close();
 }

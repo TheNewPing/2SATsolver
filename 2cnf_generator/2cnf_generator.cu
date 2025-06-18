@@ -1,4 +1,5 @@
 #include <iostream>
+#include <random>
 
 #include "../include/literal.cu"
 
@@ -24,7 +25,10 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    Literal* h_formulas = generate_2cnf(n, new_variable_probability);
+    std::random_device rd;
+    std::mt19937 gen(rd());
+
+    Literal* h_formulas = generate_2cnf(&gen, n, new_variable_probability);
     if (h_formulas == nullptr) {
         std::cerr << "Error: Failed to generate 2CNF formulas.\n";
         return 1;

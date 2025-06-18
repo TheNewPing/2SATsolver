@@ -98,21 +98,25 @@ __device__ __host__ void print_array(int* array, int num_rows, int* row_end_indi
     }
 }
 
-bool verify_solutions(bool* out_results, int n_out_results, std::vector<Literal>& vars, int n_vars) {
+bool verify_solutions(bool* out_results, int n_out_results, std::vector<Literal>& formulas, int n_vars) {
     bool valid = true;
     for (int i = 0; i < n_out_results; ++i) {
-        for (int j = 0; j < vars.size(); j+=2) {
-            bool sign1 = vars[j].isPositive;
-            bool sign2 = vars[j + 1].isPositive;
-            int var1 = vars[j].value;
-            int var2 = vars[j + 1].value;
+        for (int j = 0; j < formulas.size(); j+=2) {
+            bool sign1 = formulas[j].isPositive;
+            bool sign2 = formulas[j + 1].isPositive;
+            int var1 = formulas[j].value;
+            int var2 = formulas[j + 1].value;
             bool val1 = out_results[i * n_vars + var1] == sign1;
             bool val2 = out_results[i * n_vars + var2] == sign2;
             if (!(val1 || val2)) {
                 printf("ERROR: solution %d is not valid.\n", i);
+                printf("wrong formula index: %d\n", j/2);
+                printf("var1: %d, sign1: %d, val1: %d\n", var1, sign1, out_results[i * n_vars + var1]);
+                printf("var2: %d, sign2: %d, val2: %d\n", var2, sign2, out_results[i * n_vars + var2]);
                 print_array(out_results + i * n_vars, n_vars, n_vars, "sol: ");
-                // exit(1);
                 valid = false;
+
+                formulas_to_file(formulas, "error_formulas.txt");
             }
         }
     }

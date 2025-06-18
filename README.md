@@ -9,7 +9,7 @@ Lists K solutions of a 2 SAT instance, having a minimum Hamming distance between
 Compile the example with:
 
 ```sh
-nvcc -Xcompiler -fopenmp -lgomp -Iinclude src/main.cu -o bin/main`
+nvcc -Xcompiler -fopenmp -lgomp -Iinclude src/main.cu -o bin/main
 ```
 
 ### Example Usage

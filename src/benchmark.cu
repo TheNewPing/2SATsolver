@@ -34,18 +34,16 @@ int parallel_usage(TwoSat2SCC* sccs, int n, int min_dist, bool **out_results, in
         int *h_candidates = sccs->arrayify_candidates();
 
         // ----------- Compute solutions based on sccs ----------- 
-        int *d_comp;
         bool *d_sol_comp;
-        compute_sccs_solutions(max_threads, max_blocks, n_comp, n_sol, n_vars, n_vertices,
-                               h_candidates, h_infl_comp, h_infl_comp_end_idx, infl_comp_bytes, h_comp,
-                               &d_comp, &d_sol_comp);
+        compute_sccs_solutions(max_threads, sm_count, n_comp, n_sol, n_vars, n_vertices,
+                               h_candidates, h_infl_comp, h_infl_comp_end_idx, infl_comp_bytes,
+                               &d_sol_comp);
         free(h_candidates);
 
         // ----------- Transfer sccs solutions to variable solutions ----------- 
         bool *h_sol_var;
         solutions_sccs_to_vars(max_threads, max_blocks, n_comp, n_sol, n_vars, n_vertices,
-                               d_comp, d_sol_comp, &h_sol_var);
-        HANDLE_ERROR(cudaFree(d_comp));
+                               h_comp, d_sol_comp, &h_sol_var);
         HANDLE_ERROR(cudaFree(d_sol_comp));
 
         // ----------- Compute compatibility between solutions based on min dist ----------- 
@@ -64,13 +62,14 @@ int parallel_usage(TwoSat2SCC* sccs, int n, int min_dist, bool **out_results, in
 
     free(h_comp);
     free(h_infl_comp);
+    free(h_infl_comp_end_idx);
 
     return n_out_results;
 }
 
 int main(int argc, char** argv) {
     if (argc < 8) {
-        printf("Usage: %s <repetitions> <n_sol> <2SAT formulas> <min_dist> <new_var_prob> <parallel=1, serial=0> <logfile>\n", argv[0]);
+        printf("Usage: %s <repetitions> <n_sol> <2SAT formulas> <min_dist> <new_var_prob> <parallel=1, serial=0> <logfile> [formulafile]\n", argv[0]);
         return -1;
     }
     int repetitions = atoi(argv[1]);
@@ -80,6 +79,8 @@ int main(int argc, char** argv) {
     float new_var_prob = atof(argv[5]);
     int parallel = atoi(argv[6]);
     const char* logfile = argv[7];
+    const char* formulafile = (argc >= 9) ? argv[8] : nullptr;
+
     if (repetitions <= 0 || n_sol <= 0 || n_2sat_formulas <= 0 || min_dist < 0 || new_var_prob < 0.0 || new_var_prob > 1.0) {
         printf("Invalid arguments.\n");
         return -1;
@@ -118,14 +119,20 @@ int main(int argc, char** argv) {
     printf("Minimum distance: %d\n", min_dist);
     printf("New variable probability: %.2f\n", new_var_prob);
     printf("Parallel: %d\n", parallel);
+    if (formulafile) {
+        printf("Formula file: %s\n", formulafile);
+    }
     printf("Starting benchmark...\n");
 
     int max_threads = get_device_prop(0).maxThreadsPerBlock;
     int max_blocks = get_device_prop(0).maxGridSize[0];
     int sm_count = get_device_prop(0).multiProcessorCount;
     
+    std::random_device rd;
+    std::mt19937 gen(rd());
+
     for (int i = 0; i < repetitions; i++) {
-        TwoSat2SCC sccs(n_2sat_formulas, new_var_prob);
+        TwoSat2SCC sccs = formulafile ? TwoSat2SCC(formulafile) : TwoSat2SCC(&gen, n_2sat_formulas, new_var_prob);
         if (parallel) {
             bool *out_results;
             auto start_par = std::chrono::high_resolution_clock::now();
@@ -144,6 +151,7 @@ int main(int argc, char** argv) {
             fprintf(log_file, "%d,%d,%d,%d,%d,%.6f,%d,%d,%ld\n",
                 n_sol, n_out_results, n_2sat_formulas, sccs.n_vars, min_dist, new_var_prob, repetitions, parallel, ms_par.count());
             fflush(log_file);
+            free(out_results);
         } else {
             // not implemented
         }

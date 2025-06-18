@@ -53,18 +53,16 @@ int parallel_usage(std::string filename, int n, int min_dist, bool print_sol=fal
         // print_vv(sccs.candidates);
 
         // ----------- Compute solutions based on sccs ----------- 
-        int *d_comp;
         bool *d_sol_comp;
-        compute_sccs_solutions(max_threads, max_blocks, n_comp, n_sol, n_vars, n_vertices,
-                               h_candidates, h_infl_comp, h_infl_comp_end_idx, infl_comp_bytes, h_comp,
-                               &d_comp, &d_sol_comp);
+        compute_sccs_solutions(max_threads, sm_count, n_comp, n_sol, n_vars, n_vertices,
+                               h_candidates, h_infl_comp, h_infl_comp_end_idx, infl_comp_bytes,
+                               &d_sol_comp);
         free(h_candidates);
 
         // ----------- Transfer sccs solutions to variable solutions ----------- 
         bool *h_sol_var;
         solutions_sccs_to_vars(max_threads, max_blocks, n_comp, n_sol, n_vars, n_vertices,
-                               d_comp, d_sol_comp, &h_sol_var);
-        HANDLE_ERROR(cudaFree(d_comp));
+                               h_comp, d_sol_comp, &h_sol_var);
         HANDLE_ERROR(cudaFree(d_sol_comp));
 
         // ----------- Compute compatibility between solutions based on min dist ----------- 

@@ -18,12 +18,9 @@ struct TwoSat2SCC {
     std::vector<bool> used;
     std::vector<int> order, comp;
     std::vector<Literal> vars;
-    std::mt19937 gen;
     std::uniform_int_distribution<> distrib;
 
     void init() {
-        std::random_device rd;
-        gen = std::mt19937(rd());
         Literal max_var = *max_element(vars.begin(), vars.end());
         n_vars = max_var.value + 1;
         n_vertices = 2 * n_vars;
@@ -31,7 +28,7 @@ struct TwoSat2SCC {
         adj_t.resize(n_vertices);
         used.resize(n_vertices);
         comp.resize(n_vertices, -1);
-        order.reserve(n_vertices);
+        order.resize(n_vertices);
         for (size_t i = 0; i < vars.size(); i += 2) {
             add_disjunction(vars[i], vars[i + 1]);
         }
@@ -44,9 +41,19 @@ struct TwoSat2SCC {
         init();
     }
 
-    TwoSat2SCC(int n, float new_variable_probability=0.9) {
+    TwoSat2SCC(std::mt19937 *gen, int n, float new_variable_probability=0.9) {
+        Literal *formulas = nullptr;
         do {
-            Literal *formulas = generate_2cnf(n, new_variable_probability);
+            if (formulas) {
+                free(formulas);
+                vars.clear();
+                adj.clear();
+                adj_t.clear();
+                used.clear();
+                comp.clear();
+                order.clear();
+            }
+            formulas = generate_2cnf(gen, n, new_variable_probability);
             for (int i = 0; i < n * 2; ++i) {
                 vars.push_back(formulas[i]);
             }
@@ -153,10 +160,12 @@ struct TwoSat2SCC {
         // Generate all candidates by swapping elements starting from the first one
         #pragma omp parallel for \
             schedule(auto) \
-            firstprivate(c) \
-            shared(candidates, adj_comp_t, distrib, gen)
+            firstprivate(c, distrib) \
+            shared(candidates, adj_comp_t)
         for (int ctr = init_ctr; ctr < max_solutions; ++ctr) {
             for (int itr = 0; itr < iterations; ++itr) {
+                std::random_device rd;
+                std::mt19937 gen(rd());
                 bool valid = false;
                 while (!valid) {
                     int i, j;
