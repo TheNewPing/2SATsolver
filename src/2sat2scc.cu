@@ -1,3 +1,6 @@
+#ifndef __2SATSCC_CU__
+#define __2SATSCC_CU__
+
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -252,3 +255,5 @@ struct TwoSat2SCC {
         return comp_array;
     }
 };
+
+#endif // __2SATSCC_CU__

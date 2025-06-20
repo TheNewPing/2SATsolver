@@ -12,67 +12,6 @@
 #include "../src/2sat_solver_parallel.cu"
 #include "../src/2sat_solver_serial.cu"
 
-int parallel_usage(TwoSat2SCC* sccs, int n, int min_dist, bool **out_results, int max_threads, int max_blocks, int sm_count) {
-    if (!sccs->build_SCC()) {
-        printf("No solution found.\n");
-        return -1;
-    }
-
-    int n_vars = sccs->n_vars;
-    int n_vertices = sccs->n_vertices;
-
-    // prepare output
-    *out_results = (bool*)malloc(n * n_vars * sizeof(bool));
-    int n_out_results = 0;
-    bool init = true;
-
-    // approximate number of solutions to the closest multiple of the number of multiprocessors
-    int n_sol = ((n + sm_count - 1) / sm_count) * sm_count;
-
-    int *h_infl_comp;
-    int *h_infl_comp_end_idx;
-    int *h_comp = sccs->arrayify_comp();
-    size_t infl_comp_bytes = sccs->arrayify_infl_comp(&h_infl_comp, &h_infl_comp_end_idx);
-    int n_comp = sccs->infl_comp.size();
-
-    while (n_out_results < n) {
-        sccs->build_candidates(n_sol, init, min_dist);
-        int *h_candidates = sccs->arrayify_candidates();
-
-        // ----------- Compute solutions based on sccs ----------- 
-        bool *d_sol_comp;
-        compute_sccs_solutions(max_threads, sm_count, n_comp, n_sol, n_vars, n_vertices,
-                               h_candidates, h_infl_comp, h_infl_comp_end_idx, infl_comp_bytes,
-                               &d_sol_comp);
-        free(h_candidates);
-
-        // ----------- Transfer sccs solutions to variable solutions ----------- 
-        bool *h_sol_var;
-        solutions_sccs_to_vars(max_threads, max_blocks, n_comp, n_sol, n_vars, n_vertices,
-                               h_comp, d_sol_comp, &h_sol_var);
-        HANDLE_ERROR(cudaFree(d_sol_comp));
-
-        // ----------- Compute compatibility between solutions based on min dist ----------- 
-        bool *h_sol_var_min_dist;
-        solutions_hamming_dist(max_threads, max_blocks, n_sol, n_vars, min_dist,
-                               n_out_results, *out_results, h_sol_var, &h_sol_var_min_dist);
-
-        // ----------- Build the final results -----------
-        n_out_results = insert_new_solution(init, n_sol, n_vars, n, h_sol_var, h_sol_var_min_dist,
-                                            *out_results, n_out_results);
-        free(h_sol_var);
-        free(h_sol_var_min_dist);
-
-        init = false;
-    }
-
-    free(h_comp);
-    free(h_infl_comp);
-    free(h_infl_comp_end_idx);
-
-    return n_out_results;
-}
-
 int main(int argc, char** argv) {
     if (argc < 8) {
         printf("Usage: %s <repetitions> <n_sol> <2SAT formulas> <min_dist> <new_var_prob> <parallel=1, serial=0> <logfile> [formulafile1 formulafile2 ...]\n", argv[0]);
@@ -199,18 +138,20 @@ int main(int argc, char** argv) {
     for (int i = 0; i < repetitions; i++) {
         TwoSat2SCC sccs = formulafiles.empty() ? TwoSat2SCC(&gen, n_2sat_formulas, new_var_prob) : TwoSat2SCC(formulafiles[i % formulafiles.size()]);
         sccs_history.push_back(sccs);
-        bool *out_results;
+        bool *out_results = (bool*)malloc(n_sol * sccs.n_vars * sizeof(bool));
         int n_out_results = -1;
         std::chrono::_V2::system_clock::time_point start_par;
         std::chrono::_V2::system_clock::time_point end_par;
 
         if (parallel) {
             start_par = std::chrono::high_resolution_clock::now();
-            n_out_results = parallel_usage(&sccs, n_sol, min_dist, &out_results,
+            n_out_results = parallel_usage(&sccs, n_sol, min_dist, out_results,
                                               max_threads, max_blocks, sm_count);
             end_par = std::chrono::high_resolution_clock::now();
         } else {
-            // not implemented
+            start_par = std::chrono::high_resolution_clock::now();
+            n_out_results = serial_usage(&sccs, n_sol, min_dist, out_results);
+            end_par = std::chrono::high_resolution_clock::now();
         }
 
         if (!verify_solutions(out_results, n_out_results, sccs.vars, sccs.n_vars)) {

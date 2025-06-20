@@ -280,13 +280,13 @@ Args:
     init: true if this is the first iteration, false otherwise.
     n_sol: number of candidate solutions.
     n_vars: number of variables.
-    n: maximum number of solutions to output.
+    max_sol: maximum number of solutions to output.
     h_sol_var: matrix of new solutions on variables, it should contain the results already computed.
     h_sol_var_min_dist: matrix of compatibility between solutions, contains the compatibility between all candidates in the output pool and in the new pool.
     out_results: matrix of final results.
     n_out_results: number of candidate solutions already in out_results.
 */
-int insert_new_solution(bool init, int n_sol, int n_vars, int n, bool* h_sol_var, bool* h_sol_var_min_dist,
+int insert_new_solution(bool init, int n_sol, int n_vars, int max_sol, bool* h_sol_var, bool* h_sol_var_min_dist,
     bool* out_results, int n_out_results) {
     // printf("Building final results...\n");
     int n_sol_var_to_filter = n_sol + n_out_results;
@@ -300,7 +300,7 @@ int insert_new_solution(bool init, int n_sol, int n_vars, int n, bool* h_sol_var
     }
 
     // insert the rest of the results
-    for (int i = inserted_solutions.size(); i < n_sol_var_to_filter && inserted_solutions.size() < n; ++i) {
+    for (int i = inserted_solutions.size(); i < n_sol_var_to_filter && inserted_solutions.size() < max_sol; ++i) {
         bool valid = true;
         for (int val : inserted_solutions) {
             if (!h_sol_var_min_dist[i * n_sol_var_to_filter + val]) {
@@ -317,4 +317,66 @@ int insert_new_solution(bool init, int n_sol, int n_vars, int n, bool* h_sol_var
 
     // printf("Building final results done.\n");
     return inserted_solutions.size();
+}
+
+int parallel_usage(TwoSat2SCC* sccs, int max_sol, int min_dist, bool *out_results, int max_threads, int max_blocks, int sm_count) {
+    if (!sccs->build_SCC()) {
+        printf("No solution found.\n");
+        return -1;
+    }
+
+    int n_vars = sccs->n_vars;
+    int n_vertices = sccs->n_vertices;
+
+    int n_out_results = 0;
+    bool init = true;
+
+    // approximate number of solutions to the closest multiple of the number of multiprocessors
+    int n_sol = ((max_sol + sm_count - 1) / sm_count) * sm_count;
+
+    int *h_infl_comp;
+    int *h_infl_comp_end_idx;
+    int *h_comp = sccs->arrayify_comp();
+    size_t infl_comp_bytes = sccs->arrayify_infl_comp(&h_infl_comp, &h_infl_comp_end_idx);
+    int n_comp = sccs->infl_comp.size();
+
+    int max_tries = 1000;
+    int try_count = 0;
+    while (n_out_results < max_sol && try_count < max_tries) {
+        sccs->build_candidates(n_sol, init, min_dist);
+        int *h_candidates = sccs->arrayify_candidates();
+
+        // ----------- Compute solutions based on sccs ----------- 
+        bool *d_sol_comp;
+        compute_sccs_solutions(max_threads, sm_count, n_comp, n_sol, n_vars, n_vertices,
+                               h_candidates, h_infl_comp, h_infl_comp_end_idx, infl_comp_bytes,
+                               &d_sol_comp);
+        free(h_candidates);
+
+        // ----------- Transfer sccs solutions to variable solutions ----------- 
+        bool *h_sol_var;
+        solutions_sccs_to_vars(max_threads, max_blocks, n_comp, n_sol, n_vars, n_vertices,
+                               h_comp, d_sol_comp, &h_sol_var);
+        HANDLE_ERROR(cudaFree(d_sol_comp));
+
+        // ----------- Compute compatibility between solutions based on min dist ----------- 
+        bool *h_sol_var_min_dist;
+        solutions_hamming_dist(max_threads, max_blocks, n_sol, n_vars, min_dist,
+                               n_out_results, out_results, h_sol_var, &h_sol_var_min_dist);
+
+        // ----------- Build the final results -----------
+        n_out_results = insert_new_solution(init, n_sol, n_vars, max_sol, h_sol_var, h_sol_var_min_dist,
+                                            out_results, n_out_results);
+        free(h_sol_var);
+        free(h_sol_var_min_dist);
+
+        init = false;
+        try_count++;
+    }
+
+    free(h_comp);
+    free(h_infl_comp);
+    free(h_infl_comp_end_idx);
+
+    return n_out_results;
 }
