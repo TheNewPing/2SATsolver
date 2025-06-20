@@ -7,6 +7,7 @@
 #include "../include/literal.cu"
 #include "../include/cuda_error.cu"
 #include "../include/cuda_utilities.cu"
+#include "./2sat2scc.cu"
 
 /*
 Runs 1 block per candidate solution.

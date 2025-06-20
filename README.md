@@ -2,6 +2,9 @@
 
 Lists K solutions of a 2 SAT instance, having a minimum Hamming distance between them.
 
+All binaries can be compiled with `make` and a brief test suite is available with `make test`.
+Below you will find the details about each available binary.
+
 ## Example
 
 ### Example Compilation
